@@ -2,9 +2,11 @@ import { pathToFileURL } from "node:url";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import path from "node:path";
+import { z } from "zod";
 
-import { DomainError } from "../server/domain/errors.js";
 import { createDomainServices, type DomainServices } from "../server/domain/services.js";
+import { DomainError } from "../server/domain/errors.js";
 import { agentRegisterSchema, agentUpdateStatusSchema, createAgentToolHandlers } from "./tools/agent.js";
 import { chatReadSchema, chatSendSchema, createChatToolHandlers } from "./tools/chat.js";
 import {
@@ -71,7 +73,8 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   const memoryTools = createMemoryToolHandlers(services);
 
   // Detect projectId from current working directory
-  const projectId = process.cwd();
+  const folderName = path.basename(process.cwd());
+  const projectId = folderName.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
   server.registerTool(
     "agent.register",
@@ -98,7 +101,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
     },
     async (input) => {
       try {
-        return toToolContent(await agentTools.updateStatus(input));
+        return toToolContent(await agentTools.updateStatus({ ...input, projectId }));
       } catch (error) {
         return toToolError(error);
       }
@@ -109,7 +112,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
     "chat.send",
     {
       title: "Send chat message",
-      description: "Send a message to a shared agent chat room.",
+      description: "Send a message to a coordination room.",
       inputSchema: chatSendSchema.shape
     },
     async (input) => {
@@ -125,7 +128,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
     "chat.read",
     {
       title: "Read chat messages",
-      description: "Read recent messages from a shared agent chat room.",
+      description: "Read recent messages from a coordination room.",
       inputSchema: chatReadSchema.shape
     },
     async (input) => {
@@ -141,7 +144,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
     "task.start",
     {
       title: "Start task",
-      description: "Start a new task assigned to an agent.",
+      description: "Mark the beginning of a discrete work unit.",
       inputSchema: taskStartSchema.shape
     },
     async (input) => {
@@ -157,12 +160,12 @@ export function createMcpServer(services: DomainServices = createDomainServices(
     "task.finish",
     {
       title: "Finish task",
-      description: "Mark a task as finished (completed or failed).",
+      description: "Mark a task as completed or failed.",
       inputSchema: taskFinishSchema.shape
     },
     async (input) => {
       try {
-        return toToolContent(await taskTools.finish(input));
+        return toToolContent(await taskTools.finish({ ...input, projectId }));
       } catch (error) {
         return toToolError(error);
       }
@@ -170,10 +173,10 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "file.claim",
+    "traceability.claim_file",
     {
       title: "Claim file",
-      description: "Claim a file for exclusive use by an agent.",
+      description: "Mark a file as being modified by an agent for a specific task.",
       inputSchema: fileClaimSchema.shape
     },
     async (input) => {
@@ -186,15 +189,15 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "file.release",
+    "traceability.release_file",
     {
       title: "Release file",
-      description: "Release a previously claimed file.",
+      description: "Mark a file as released after modification.",
       inputSchema: fileReleaseSchema.shape
     },
     async (input) => {
       try {
-        return toToolContent(await traceabilityTools.releaseFile(input));
+        return toToolContent(await traceabilityTools.releaseFile({ ...input, projectId }));
       } catch (error) {
         return toToolError(error);
       }
@@ -202,10 +205,10 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "decision.record",
+    "traceability.record_decision",
     {
       title: "Record decision",
-      description: "Record a decision made by an agent.",
+      description: "Log an important architectural or logic decision.",
       inputSchema: decisionRecordSchema.shape
     },
     async (input) => {
@@ -220,8 +223,8 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   server.registerTool(
     "memory.publish",
     {
-      title: "Publish shared memory",
-      description: "Publish a markdown file to the project's shared knowledge base.",
+      title: "Publish to shared memory",
+      description: "Save information to the shared project knowledge base.",
       inputSchema: memoryPublishSchema.shape
     },
     async (input) => {
@@ -237,8 +240,8 @@ export function createMcpServer(services: DomainServices = createDomainServices(
     "memory.list",
     {
       title: "List shared memory",
-      description: "List all markdown files in the project's shared knowledge base.",
-      inputSchema: {}
+      description: "List files in the shared project knowledge base.",
+      inputSchema: z.object({}).shape
     },
     async (input) => {
       try {
@@ -253,7 +256,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
     "memory.read",
     {
       title: "Read shared memory",
-      description: "Read the content of a markdown file from the shared knowledge base.",
+      description: "Read a file from the shared project knowledge base.",
       inputSchema: memoryReadSchema.shape
     },
     async (input) => {
@@ -268,15 +271,9 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   return server;
 }
 
-export async function runMcpServer(): Promise<void> {
+export async function runServer() {
   const server = createMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  runMcpServer().catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+  console.error("CodeHive MCP Server running on stdio");
 }

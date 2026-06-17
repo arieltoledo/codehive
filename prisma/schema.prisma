@@ -25,16 +25,17 @@ model Agent {
 }
 
 model Project {
-  id          String   @id
+  id          String      @id
   name        String
   description String?
-  status      String   @default("active")
-  createdAt   DateTime @default(now()) @map("created_at")
+  apiKey      String?     @map("api_key")
+  status      String      @default("active")
+  createdAt   DateTime    @default(now()) @map("created_at")
   agents      Agent[]
+  decisions   Decision[]
+  claims      FileClaim[]
   rooms       Room[]
   tasks       Task[]
-  claims      FileClaim[]
-  decisions   Decision[]
 
   @@map("projects")
 }
@@ -68,7 +69,6 @@ model Message {
 model Task {
   id              String    @id
   projectId       String    @default("local") @map("project_id")
-  parentTaskId    String?   @map("parent_task_id")
   title           String
   description     String
   status          String
@@ -76,6 +76,7 @@ model Task {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
   finishedAt      DateTime? @map("finished_at")
+  parentTaskId    String?   @map("parent_task_id")
   project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("tasks")

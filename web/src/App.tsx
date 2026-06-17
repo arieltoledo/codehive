@@ -92,8 +92,8 @@ const App = () => {
     }
   };
 
-  const coordinatorTasks = tasks.filter(t => !t.parent_task_id);
-  const getSubTasks = (parentId: string) => tasks.filter(t => t.parent_task_id === parentId);
+  const coordinatorTasks = (tasks || []).filter(t => !t.parent_task_id);
+  const getSubTasks = (parentId: string) => (tasks || []).filter(t => t.parent_task_id === parentId);
   const currentProject = projects.find(p => p.id === projectId);
 
   return (

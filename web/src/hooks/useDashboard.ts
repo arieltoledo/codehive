@@ -31,9 +31,16 @@ export function useDashboard(initialProjectId: string | null = null) {
     fetch(`/api/projects/${projectId}/dashboard/snapshot`)
       .then(res => res.json())
       .then(data => {
-        setAgents(data.agents);
-        setMessages(data.messages);
-        setTasks(data.active_tasks);
+        if (!data) return;
+        setAgents(data.agents || []);
+        setMessages(data.messages || []);
+        setTasks(data.active_tasks || []);
+      })
+      .catch(err => {
+        console.error('Failed to fetch snapshot:', err);
+        setAgents([]);
+        setMessages([]);
+        setTasks([]);
       });
 
     // Fetch Memory Files
@@ -90,31 +97,40 @@ export function useDashboard(initialProjectId: string | null = null) {
     };
     return () => ws.close();
   }, [projectId]);
+const sendMessage = async (message: string, roomId: string = 'coordination') => {
+  const project = projects.find(p => p.id === projectId);
+  const response = await fetch('/api/messages', {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'x-hive-key': project?.apiKey || ''
+    },
+    body: JSON.stringify({
+      projectId,
+      senderId: 'human_supervisor',
+      message,
+      messageType: 'human',
+      roomId
+    })
+  });
 
-  const sendMessage = async (message: string, roomId: string = 'coordination') => {
-    const response = await fetch('/api/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        projectId,
-        senderId: 'human_supervisor',
-        message,
-        messageType: 'human',
-        roomId
-      })
-    });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error?.message ?? 'Failed to send message');
+  }
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message ?? 'Failed to send message');
+  return response.json();
+};
+...
+const deleteProject = async (id: string) => {
+  const project = projects.find(p => p.id === id);
+  const response = await fetch(`/api/projects/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'x-hive-key': project?.apiKey || ''
     }
+  });
 
-    return response.json();
-  };
-
-  const approvePlan = async (filename: string) => {
-    const response = await fetch('/api/memory/approve', {
-      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, filename })
     });
