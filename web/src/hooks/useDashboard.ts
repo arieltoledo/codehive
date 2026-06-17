@@ -97,40 +97,35 @@ export function useDashboard(initialProjectId: string | null = null) {
     };
     return () => ws.close();
   }, [projectId]);
-const sendMessage = async (message: string, roomId: string = 'coordination') => {
-  const project = projects.find(p => p.id === projectId);
-  const response = await fetch('/api/messages', {
-    method: 'POST',
-    headers: { 
-      'Content-Type': 'application/json',
-      'x-hive-key': project?.apiKey || ''
-    },
-    body: JSON.stringify({
-      projectId,
-      senderId: 'human_supervisor',
-      message,
-      messageType: 'human',
-      roomId
-    })
-  });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message ?? 'Failed to send message');
-  }
+  const sendMessage = async (message: string, roomId: string = 'coordination') => {
+    const project = projects.find(p => p.id === projectId);
+    const response = await fetch('/api/messages', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-hive-key': project?.apiKey || ''
+      },
+      body: JSON.stringify({
+        projectId,
+        senderId: 'human_supervisor',
+        message,
+        messageType: 'human',
+        roomId
+      })
+    });
 
-  return response.json();
-};
-...
-const deleteProject = async (id: string) => {
-  const project = projects.find(p => p.id === id);
-  const response = await fetch(`/api/projects/${id}`, {
-    method: 'DELETE',
-    headers: {
-      'x-hive-key': project?.apiKey || ''
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message ?? 'Failed to send message');
     }
-  });
 
+    return response.json();
+  };
+
+  const approvePlan = async (filename: string) => {
+    const response = await fetch('/api/memory/approve', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, filename })
     });
@@ -144,8 +139,12 @@ const deleteProject = async (id: string) => {
   };
 
   const deleteProject = async (id: string) => {
+    const project = projects.find(p => p.id === id);
     const response = await fetch(`/api/projects/${id}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: {
+        'x-hive-key': project?.apiKey || ''
+      }
     });
 
     if (!response.ok) {

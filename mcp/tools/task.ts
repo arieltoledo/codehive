@@ -4,6 +4,7 @@ import type { DomainServices } from "../../server/domain/services.js";
 import { toTaskDto } from "../../server/http/presenters.js";
 
 export const taskStartSchema = z.object({
+  projectId: z.string().min(1).optional(),
   task_id: z.string().min(1),
   agent_id: z.string().min(1),
   title: z.string().min(1),
@@ -11,6 +12,7 @@ export const taskStartSchema = z.object({
 });
 
 export const taskFinishSchema = z.object({
+  projectId: z.string().min(1).optional(),
   task_id: z.string().min(1),
   status: z.enum(["completed", "failed"])
 });

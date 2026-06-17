@@ -5,6 +5,7 @@ import type { DomainServices } from "../../server/domain/services.js";
 import { toMessageDto } from "../../server/http/presenters.js";
 
 export const chatSendSchema = z.object({
+  projectId: z.string().min(1).optional(),
   room_id: z.string().min(1),
   sender_id: z.string().min(1),
   message: z.string().min(1),
@@ -13,6 +14,7 @@ export const chatSendSchema = z.object({
 });
 
 export const chatReadSchema = z.object({
+  projectId: z.string().min(1).optional(),
   room_id: z.string().min(1).default(DEFAULT_ROOM_ID),
   limit: z.number().int().min(1).max(MAX_MESSAGE_LIMIT).default(DEFAULT_MESSAGE_LIMIT)
 });
@@ -40,7 +42,9 @@ export function createChatToolHandlers(services: DomainServices) {
     },
     read: async (input: unknown) => {
       const parsed = chatReadSchema.parse(input);
-      const url = new URL(`${API_URL}/api/messages`);
+      // Construct URL carefully. Use projectId to route properly
+      const projectId = parsed.projectId ?? "local";
+      const url = new URL(`${API_URL}/api/projects/${projectId}/messages`);
       url.searchParams.append("room_id", parsed.room_id);
       url.searchParams.append("limit", parsed.limit.toString());
 

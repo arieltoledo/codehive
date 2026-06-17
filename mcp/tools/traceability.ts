@@ -4,6 +4,7 @@ import type { DomainServices } from "../../server/domain/services.js";
 import { toDecisionDto, toFileClaimDto } from "../../server/http/presenters.js";
 
 export const fileClaimSchema = z.object({
+  projectId: z.string().min(1).optional(),
   agent_id: z.string().min(1),
   file_path: z.string().min(1),
   task_id: z.string().min(1).optional(),
@@ -11,11 +12,13 @@ export const fileClaimSchema = z.object({
 });
 
 export const fileReleaseSchema = z.object({
+  projectId: z.string().min(1).optional(),
   agent_id: z.string().min(1),
   file_path: z.string().min(1)
 });
 
 export const decisionRecordSchema = z.object({
+  projectId: z.string().min(1).optional(),
   agent_id: z.string().min(1),
   decision: z.string().min(1),
   reason: z.string().min(1),

@@ -2,12 +2,14 @@ import { z } from "zod";
 import type { DomainServices } from "../../server/domain/services.js";
 
 export const memoryPublishSchema = z.object({
+  projectId: z.string().min(1).optional(),
   filename: z.string().min(1),
   content: z.string().min(1),
   description: z.string().optional()
 });
 
 export const memoryReadSchema = z.object({
+  projectId: z.string().min(1).optional(),
   filename: z.string().min(1)
 });
 

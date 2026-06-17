@@ -5,6 +5,7 @@ import { toAgentDto } from "../../server/http/presenters.js";
 import type { AgentStatus } from "../../server/domain/types.js";
 
 export const agentRegisterSchema = z.object({
+  projectId: z.string().min(1).optional(),
   agent_id: z.string().min(1),
   name: z.string().min(1),
   provider: z.string().min(1),
@@ -13,6 +14,7 @@ export const agentRegisterSchema = z.object({
 });
 
 export const agentUpdateStatusSchema = z.object({
+  projectId: z.string().min(1).optional(),
   agent_id: z.string().min(1),
   status: z.enum(["idle", "working", "error", "paused"])
 });
