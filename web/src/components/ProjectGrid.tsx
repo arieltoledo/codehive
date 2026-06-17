@@ -1,4 +1,5 @@
-import { Users, Activity, ChevronRight, Trash2, Hexagon } from 'lucide-react';
+import { useState } from 'react';
+import { Users, Activity, ChevronRight, Trash2, Hexagon, AlertTriangle, X } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ProjectGridProps {
@@ -8,6 +9,15 @@ interface ProjectGridProps {
 }
 
 export const ProjectGrid = ({ projects, onSelectProject, onDeleteProject }: ProjectGridProps) => {
+  const [projectToDelete, setProjectToDelete] = useState<any>(null);
+
+  const confirmDelete = () => {
+    if (projectToDelete) {
+      onDeleteProject(projectToDelete.id);
+      setProjectToDelete(null);
+    }
+  };
+
   return (
     <div className="flex-1 overflow-y-auto p-12 bg-discord-darkest relative">
       {/* Decorative Background Elements */}
@@ -40,9 +50,7 @@ export const ProjectGrid = ({ projects, onSelectProject, onDeleteProject }: Proj
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (confirm(`Are you sure you want to delete project '${project.name}'? All agents and data will be removed.`)) {
-                      onDeleteProject(project.id);
-                    }
+                    setProjectToDelete(project);
                   }}
                   className="absolute top-6 right-6 z-20 p-2 text-discord-muted hover:text-discord-red hover:bg-discord-red/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
                   title="Delete Project"
@@ -61,9 +69,8 @@ export const ProjectGrid = ({ projects, onSelectProject, onDeleteProject }: Proj
                   }`}>
                     {project.status}
                   </div>
-                  <div className="text-[10px] text-discord-muted font-semibold">
-                    {format(new Date(project.createdAt), 'MMM yyyy')}
-                  </div>
+                  {/* Space for the absolute delete button */}
+                  <div className="w-8 h-8" /> 
                 </div>
 
                 <h3 className="text-2xl font-bold text-white group-hover:text-discord-cyan transition-colors mb-3">
@@ -75,16 +82,19 @@ export const ProjectGrid = ({ projects, onSelectProject, onDeleteProject }: Proj
                 </p>
 
                 <div className="mt-auto w-full">
-                  <div className="flex items-center space-x-6 mb-6">
-                    <div className="flex items-center space-x-2">
-                      <Users className="w-4 h-4 text-discord-cyan" />
-                      <span className="text-sm font-bold text-discord-light">{project.agentCount}</span>
-                      <span className="text-[10px] font-bold text-discord-muted uppercase">Agents</span>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-4">
+                      <div className="flex items-center space-x-1.5">
+                        <Users className="w-4 h-4 text-discord-cyan" />
+                        <span className="text-sm font-bold text-discord-light">{project.agentCount}</span>
+                      </div>
+                      <div className="flex items-center space-x-1.5">
+                        <Activity className="w-4 h-4 text-discord-yellow" />
+                        <span className="text-sm font-bold text-discord-light">{project.activeTasksCount}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <Activity className="w-4 h-4 text-discord-yellow" />
-                      <span className="text-sm font-bold text-discord-light">{project.activeTasksCount}</span>
-                      <span className="text-[10px] font-bold text-discord-muted uppercase">Tasks</span>
+                    <div className="text-[10px] text-discord-muted font-bold tracking-tighter uppercase opacity-50">
+                      Est. {format(new Date(project.createdAt), 'MMM yyyy')}
                     </div>
                   </div>
 
@@ -101,6 +111,65 @@ export const ProjectGrid = ({ projects, onSelectProject, onDeleteProject }: Proj
           ))}
         </div>
       </div>
+
+      {/* CUSTOM CONFIRMATION MODAL */}
+      {projectToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setProjectToDelete(null)}
+          />
+          
+          {/* Modal Card */}
+          <div className="relative w-full max-w-md bg-discord-darker rounded-xl shadow-2xl border border-white/5 overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="p-2 bg-discord-red/10 rounded-lg">
+                  <AlertTriangle className="w-6 h-6 text-discord-red" />
+                </div>
+                <h3 className="text-xl font-black text-white uppercase tracking-tight">Delete Project?</h3>
+              </div>
+              
+              <div className="text-sm text-discord-light leading-relaxed mb-6">
+                Are you sure you want to terminate <span className="font-bold text-discord-red">{projectToDelete.name}</span>? 
+                This action is irreversible and will delete all associated agents, messages, and task logs.
+              </div>
+
+              <div className="bg-discord-darkest/50 p-4 rounded-lg border border-white/5 mb-6">
+                <div className="text-[10px] text-discord-muted font-bold uppercase tracking-widest mb-1">Impact Analysis</div>
+                <div className="text-xs text-discord-muted">
+                  • {projectToDelete.agentCount} Agents will be disconnected<br/>
+                  • {projectToDelete.activeTasksCount} Active tasks will be aborted<br/>
+                  • .agents/memory/{projectToDelete.id} will be wiped
+                </div>
+              </div>
+
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setProjectToDelete(null)}
+                  className="flex-1 py-2.5 rounded-lg text-xs font-black text-white hover:bg-white/10 transition-colors uppercase tracking-widest"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="flex-1 py-2.5 rounded-lg text-xs font-black text-white bg-discord-red hover:bg-discord-red/80 transition-all shadow-lg shadow-discord-red/10 uppercase tracking-widest"
+                >
+                  Delete Project
+                </button>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => setProjectToDelete(null)}
+              className="absolute top-4 right-4 p-1 text-discord-muted hover:text-white transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
