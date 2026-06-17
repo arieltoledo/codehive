@@ -277,3 +277,6 @@ export async function runServer() {
   await server.connect(transport);
   console.error("CodeHive MCP Server running on stdio");
 }
+
+// Start the server
+runServer().catch(console.error);
