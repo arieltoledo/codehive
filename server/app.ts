@@ -1,0 +1,65 @@
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
+import websocket from "@fastify/websocket";
+import fastifyStatic from "@fastify/static";
+
+import { DomainError } from "./domain/errors.js";
+import { createDomainServices, type DomainServices } from "./domain/services.js";
+import { registerRoutes } from "./http/routes.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export interface BuildAppOptions {
+  logger?: boolean | FastifyBaseLogger;
+  services?: DomainServices;
+}
+
+export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
+  const services = options.services ?? createDomainServices();
+  const app = Fastify({
+    logger: options.logger ?? false
+  });
+
+  app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof DomainError) {
+      return reply.status(error.statusCode).send({
+        error: {
+          code: error.code,
+          message: error.message
+        }
+      });
+    }
+
+    app.log.error(error);
+    return reply.status(500).send({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Unexpected server error."
+      }
+    });
+  });
+
+  await app.register(websocket);
+
+  await app.register(fastifyStatic, {
+    root: path.join(process.cwd(), "web/dist"),
+    prefix: "/"
+  });
+
+  await registerRoutes(app, services);
+
+  app.setNotFoundHandler((request, reply) => {
+    if (request.raw.url?.startsWith("/api")) {
+      return reply.status(404).send({
+        error: {
+          code: "NOT_FOUND",
+          message: "Resource not found"
+        }
+      });
+    }
+    return reply.sendFile("index.html");
+  });
+
+  return app;
+}

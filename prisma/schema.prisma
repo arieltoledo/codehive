@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Agent {
+  id            String   @id
+  projectId     String   @default("local") @map("project_id")
+  name          String
+  provider      String
+  role          String
+  parentAgentId String?  @map("parent_agent_id")
+  status        String   @default("idle")
+  currentTaskId String?  @map("current_task_id")
+  lastSeenAt    DateTime @default(now()) @map("last_seen_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("agents")
+}
+
+model Project {
+  id        String   @id
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  agents    Agent[]
+  rooms     Room[]
+  tasks     Task[]
+  claims    FileClaim[]
+  decisions Decision[]
+
+  @@map("projects")
+}
+
+model Room {
+  id        String    @id
+  projectId String    @map("project_id")
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  messages  Message[]
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("rooms")
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  roomId      String   @map("room_id")
+  senderId    String   @map("sender_id")
+  senderType  String   @default("agent") @map("sender_type")
+  messageType String   @map("message_type")
+  content     String
+  taskId      String?  @map("task_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+  @@map("messages")
+}
+
+model Task {
+  id              String    @id
+  projectId       String    @default("local") @map("project_id")
+  title           String
+  description     String
+  status          String
+  assignedAgentId String    @map("assigned_agent_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  finishedAt      DateTime? @map("finished_at")
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("tasks")
+}
+
+model FileClaim {
+  id         String    @id @default(cuid())
+  projectId  String    @default("local") @map("project_id")
+  agentId    String    @map("agent_id")
+  taskId     String?   @map("task_id")
+  filePath   String    @map("file_path")
+  status     String
+  reason     String
+  createdAt  DateTime  @default(now()) @map("created_at")
+  releasedAt DateTime? @map("released_at")
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, status])
+  @@map("file_claims")
+}
+
+model Decision {
+  id        String   @id @default(cuid())
+  projectId String   @default("local") @map("project_id")
+  agentId   String   @map("agent_id")
+  taskId    String?  @map("task_id")
+  decision  String
+  reason    String
+  createdAt DateTime @default(now()) @map("created_at")
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+  @@map("decisions")
+}
