@@ -59,6 +59,7 @@ export interface MessageRecord {
 export interface TaskRecord {
   projectId: string;
   taskId: string;
+  parentTaskId: string | null;
   title: string;
   description: string;
   status: string;
@@ -71,6 +72,7 @@ export interface TaskRecord {
 export interface StartTaskInput {
   projectId?: string;
   taskId: string;
+  parentTaskId?: string | null;
   agentId: string;
   title: string;
   description: string;

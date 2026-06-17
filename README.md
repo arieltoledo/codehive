@@ -4,7 +4,20 @@
 
 Ofrece una visión centralizada y en tiempo real de lo que tus agentes están pensando, planeando y ejecutando en múltiples proyectos simultáneamente.
 
-![CodeHive Dashboard](https://via.placeholder.com/800x400?text=CodeHive+Dashboard+Preview) <!-- Reemplazar con screenshot real -->
+![CodeHive Dashboard](docs/assets/dashboard.png)
+
+### 🖼️ Dashboard Layout
+
+```mermaid
+graph TD
+    subgraph Dashboard
+        direction LR
+        A[<b>AGENTS</b><br/>Hierarchy View] --- B[<b>COMMUNICATION_LOG</b><br/>Real-time Discord-style Chat]
+        B --- C[<b>SHARED_MEMORY</b><br/>MD Plans & Task Status]
+    end
+```
+
+*(Se recomienda capturar una imagen real del dashboard y reemplazar este diagrama para una mejor presentación)*
 
 ## ✨ Características Principales
 

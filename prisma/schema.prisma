@@ -25,14 +25,16 @@ model Agent {
 }
 
 model Project {
-  id        String   @id
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
-  agents    Agent[]
-  rooms     Room[]
-  tasks     Task[]
-  claims    FileClaim[]
-  decisions Decision[]
+  id          String   @id
+  name        String
+  description String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  agents      Agent[]
+  rooms       Room[]
+  tasks       Task[]
+  claims      FileClaim[]
+  decisions   Decision[]
 
   @@map("projects")
 }
@@ -66,6 +68,7 @@ model Message {
 model Task {
   id              String    @id
   projectId       String    @default("local") @map("project_id")
+  parentTaskId    String?   @map("parent_task_id")
   title           String
   description     String
   status          String

@@ -1,21 +1,32 @@
 import { useState, useEffect } from 'react';
 
-export function useDashboard(initialProjectId: string = 'local') {
-  const [projectId, setProjectId] = useState(initialProjectId);
+export function useDashboard(initialProjectId: string | null = null) {
+  const [projectId, setProjectId] = useState<string | null>(initialProjectId);
   const [projects, setProjects] = useState<any[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [memoryFiles, setMemoryFiles] = useState<any[]>([]);
 
-  useEffect(() => {
-    // Fetch Projects
+  const fetchProjects = () => {
     fetch('/api/projects')
       .then(res => res.json())
       .then(data => setProjects(data.projects));
-  }, []);
+  };
 
   useEffect(() => {
+    fetchProjects();
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setAgents([]);
+      setMessages([]);
+      setTasks([]);
+      setMemoryFiles([]);
+      return;
+    }
+
     // Initial Snapshot for selected project
     fetch(`/api/projects/${projectId}/dashboard/snapshot`)
       .then(res => res.json())
@@ -101,5 +112,68 @@ export function useDashboard(initialProjectId: string = 'local') {
     return response.json();
   };
 
-  return { projects, projectId, setProjectId, agents, messages, tasks, memoryFiles, sendMessage };
+  const approvePlan = async (filename: string) => {
+    const response = await fetch('/api/memory/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, filename })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message ?? 'Failed to approve plan');
+    }
+
+    return response.json();
+  };
+
+  const deleteProject = async (id: string) => {
+    const response = await fetch(`/api/projects/${id}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message ?? 'Failed to delete project');
+    }
+
+    // Refresh projects list
+    fetchProjects();
+    return response.json();
+  };
+
+  const uploadFile = async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (projectId) formData.append('projectId', projectId);
+
+    const response = await fetch('/api/memory/upload', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message ?? 'Upload failed');
+    }
+
+    return response.json();
+  };
+
+  const createFile = async (filename: string, content: string = '') => {
+    const response = await fetch('/api/memory/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, filename, content })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message ?? 'Failed to create file');
+    }
+
+    return response.json();
+  };
+
+  return { projects, projectId, setProjectId, agents, messages, tasks, memoryFiles, sendMessage, approvePlan, deleteProject, uploadFile, createFile };
 }

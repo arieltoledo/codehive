@@ -8,6 +8,7 @@ function toTaskRecord(task: Task): TaskRecord {
   return {
     projectId: task.projectId,
     taskId: task.id,
+    parentTaskId: task.parentTaskId,
     title: task.title,
     description: task.description,
     status: task.status,
@@ -27,11 +28,11 @@ export class TaskService {
   async startTask(input: StartTaskInput): Promise<TaskRecord> {
     const projectId = input.projectId ?? "local";
 
-    const agentExists = await this.prisma.agent.count({
+    const agent = await this.prisma.agent.findUnique({
       where: { id: input.agentId }
     });
 
-    if (!agentExists) {
+    if (!agent) {
       throw new DomainError(
         "AGENT_NOT_FOUND",
         `Cannot start task for unknown agent '${input.agentId}'.`,
@@ -51,12 +52,14 @@ export class TaskService {
       create: {
         id: input.taskId,
         projectId,
+        parentTaskId: input.parentTaskId ?? null,
         title: input.title,
         description: input.description,
         status: "running",
         assignedAgentId: input.agentId
       },
       update: {
+        parentTaskId: input.parentTaskId ?? null,
         title: input.title,
         description: input.description,
         status: "running",

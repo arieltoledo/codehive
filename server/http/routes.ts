@@ -56,6 +56,8 @@ const startTaskSchema = z.object({
   projectId: z.string().min(1).optional(),
   task_id: z.string().min(1).optional(),
   taskId: z.string().min(1).optional(),
+  parent_task_id: z.string().min(1).nullable().optional(),
+  parentTaskId: z.string().min(1).nullable().optional(),
   agent_id: z.string().min(1).optional(),
   agentId: z.string().min(1).optional(),
   title: z.string().min(1),
@@ -102,6 +104,11 @@ const publishMemorySchema = z.object({
   content: z.string().min(1)
 });
 
+const approveMemorySchema = z.object({
+  projectId: z.string().min(1).optional(),
+  filename: z.string().min(1)
+});
+
 export async function registerRoutes(
   app: FastifyInstance,
   services: DomainServices
@@ -113,9 +120,35 @@ export async function registerRoutes(
   // Projects
   app.get("/api/projects", async () => {
     const projects = await services.prisma.project.findMany({
+      include: {
+        _count: {
+          select: { agents: true, tasks: { where: { status: "running" } } }
+        }
+      },
       orderBy: { createdAt: "desc" }
     });
-    return { projects };
+    
+    return { 
+      projects: projects.map(p => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        status: p.status,
+        agentCount: p._count.agents,
+        activeTasksCount: p._count.tasks,
+        createdAt: p.createdAt
+      }))
+    };
+  });
+
+  app.delete("/api/projects/:projectId", async (request, reply) => {
+    const { projectId } = request.params as any;
+    try {
+      await services.projects.deleteProject(projectId);
+      return { success: true };
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "DELETE_FAILED", message: (error as Error).message } });
+    }
   });
 
   // Agents
@@ -237,6 +270,7 @@ export async function registerRoutes(
     }
 
     const taskId = parsed.data.task_id ?? parsed.data.taskId;
+    const parentTaskId = parsed.data.parent_task_id ?? parsed.data.parentTaskId ?? null;
     const agentId = parsed.data.agent_id ?? parsed.data.agentId;
     const projectId = parsed.data.projectId ?? "local";
 
@@ -247,6 +281,7 @@ export async function registerRoutes(
     const task = await services.tasks.startTask({
       projectId,
       taskId,
+      parentTaskId,
       agentId,
       title: parsed.data.title,
       description: parsed.data.description
@@ -355,8 +390,8 @@ export async function registerRoutes(
   app.get("/api/projects/:projectId/memory/:filename", async (request, reply) => {
     const { projectId, filename } = request.params as any;
     try {
-      const content = await services.memory.readFile(projectId, filename);
-      return { filename, content };
+      const { content, type } = await services.memory.readFile(projectId, filename);
+      return reply.type(type).send(content);
     } catch (error) {
       return reply.status(404).send({ error: { code: "NOT_FOUND", message: (error as Error).message } });
     }
@@ -371,6 +406,44 @@ export async function registerRoutes(
     const projectId = parsed.data.projectId ?? "local";
     const file = await services.memory.publishFile(projectId, parsed.data.filename, parsed.data.content);
     return file;
+  });
+
+  app.post("/api/memory/upload", async (request, reply) => {
+    const data = await request.file();
+    if (!data) {
+      return reply.status(400).send({ error: { code: "NO_FILE", message: "No file uploaded" } });
+    }
+
+    const projectId = (data.fields.projectId as any)?.value ?? "local";
+    const buffer = await data.toBuffer();
+    
+    const file = await services.memory.publishFile(projectId, data.filename, buffer);
+
+    // Notify in chat
+    await services.chat.sendMessage({
+      projectId,
+      roomId: "coordination",
+      senderId: "human_supervisor",
+      messageType: "system",
+      message: `System: New file [${file.filename}] uploaded to shared memory.`
+    });
+
+    return file;
+  });
+
+  app.post("/api/memory/approve", async (request, reply) => {
+    const parsed = approveMemorySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: { code: "INVALID_BODY", message: parsed.error.message } });
+    }
+
+    const projectId = parsed.data.projectId ?? "local";
+    try {
+      const file = await services.memory.approveFile(projectId, parsed.data.filename);
+      return file;
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "APPROVE_FAILED", message: (error as Error).message } });
+    }
   });
 
   app.get("/api/projects/:projectId/dashboard/snapshot", async (request) => {

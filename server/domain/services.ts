@@ -6,6 +6,7 @@ import { ChatService } from "./chat.js";
 import { DashboardService } from "./dashboard.js";
 import { EventBus } from "./events.js";
 import { MemoryService } from "./memory.js";
+import { ProjectService } from "./projects.js";
 import { TaskService } from "./tasks.js";
 import { TraceabilityService } from "./traceability.js";
 
@@ -18,6 +19,7 @@ export interface DomainServices {
   dashboard: DashboardService;
   traceability: TraceabilityService;
   memory: MemoryService;
+  projects: ProjectService;
 }
 
 export function createDomainServices(prisma: PrismaClient = createPrismaClient()): DomainServices {
@@ -28,6 +30,7 @@ export function createDomainServices(prisma: PrismaClient = createPrismaClient()
   const dashboard = new DashboardService(prisma, agents, chat);
   const traceability = new TraceabilityService(prisma, events);
   const memory = new MemoryService(events);
+  const projects = new ProjectService(prisma, events);
 
   return {
     prisma,
@@ -37,6 +40,7 @@ export function createDomainServices(prisma: PrismaClient = createPrismaClient()
     tasks,
     dashboard,
     traceability,
-    memory
+    memory,
+    projects
   };
 }

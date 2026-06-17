@@ -3,6 +3,7 @@ import path from "node:path";
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import websocket from "@fastify/websocket";
 import fastifyStatic from "@fastify/static";
+import multipart from "@fastify/multipart";
 
 import { DomainError } from "./domain/errors.js";
 import { createDomainServices, type DomainServices } from "./domain/services.js";
@@ -41,6 +42,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   await app.register(websocket);
+  await app.register(multipart);
 
   await app.register(fastifyStatic, {
     root: path.join(process.cwd(), "web/dist"),
