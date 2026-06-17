@@ -1,7 +1,11 @@
 #!/usr/bin/env node
+if (typeof process !== 'undefined' && process.env.NODE_NO_WARNINGS !== '1') {
+  process.env.NODE_NO_WARNINGS = '1';
+}
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import readline from 'node:readline/promises';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -43,12 +47,23 @@ For operational instructions and MCP server configuration, you MUST follow:
 `;
 
 async function init() {
-  console.log('\x1b[33m%s\x1b[0m', '🐝 Initializing CodeHive (Hybrid Injection Mode)...');
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  console.log('\x1b[33m%s\x1b[0m', '🐝 Initializing CodeHive (Interactive Mode)...');
   
   const projectRoot = process.cwd();
-  const codehiveDir = path.join(projectRoot, '.codehive');
+  const folderName = path.basename(projectRoot);
+
+  const projectName = await rl.question(`\x1b[36mEnter project name\x1b[0m (default: ${folderName}): `) || folderName;
+  const projectDescription = await rl.question(`\x1b[36mEnter short description\x1b[0m: `) || 'Autonomous mission deployment.';
+
+  rl.close();
 
   // 1. Create .codehive directory
+  const codehiveDir = path.join(projectRoot, '.codehive');
   await fs.mkdir(codehiveDir, { recursive: true });
   console.log('- \x1b[32mCreated .codehive/ directory.\x1b[0m');
 
@@ -56,7 +71,29 @@ async function init() {
   await fs.writeFile(path.join(codehiveDir, 'PROTOCOL.md'), MASTER_PROTOCOL.trim(), 'utf-8');
   console.log('- \x1b[32mSynchronized .codehive/PROTOCOL.md\x1b[0m');
 
-  // 3. Smart Injection in existing agent files
+  // 3. Register with Central API
+  const projectId = folderName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+  try {
+    const response = await fetch('http://localhost:3000/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: projectId,
+        name: projectName,
+        description: projectDescription
+      })
+    });
+
+    if (response.ok) {
+      console.log('- \x1b[32mRegistered project with Central Dashboard.\x1b[0m');
+    } else {
+      console.log('- \x1b[33mCould not register with local server (is it running?). Project will sync on first agent connection.\x1b[0m');
+    }
+  } catch (err) {
+    console.log('- \x1b[33mServer unreachable. Project will auto-register when the first agent starts.\x1b[0m');
+  }
+
+  // 4. Smart Injection in existing agent files
   const agentFiles = ['AGENTS.md', 'GEMINI.md', 'CLAUDE.md', '.cursorrules', '.clinerules'];
   
   for (const filename of agentFiles) {
@@ -74,7 +111,6 @@ async function init() {
       }
 
       if (content.includes('CODEHIVE_START')) {
-        console.log(`- \x1b[33m${filename}\x1b[0m already has CodeHive header. Skipping.`);
         continue;
       }
 
@@ -89,7 +125,7 @@ async function init() {
     }
   }
 
-  // 4. Persistence directory
+  // 5. Persistence directory
   const agentsDir = path.join(projectRoot, '.agents/memory');
   await fs.mkdir(agentsDir, { recursive: true });
 
