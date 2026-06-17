@@ -1,5 +1,23 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+
+const GLOBAL_CONFIG_DIR = path.join(os.homedir(), '.codehive');
+const MASTER_KEY_PATH = path.join(GLOBAL_CONFIG_DIR, 'master.key');
+
+async function getTrustedKey() {
+  const envKey = process.env.HIVE_API_KEY;
+  if (envKey) return envKey.trim();
+  
+  try {
+    const key = await fs.readFile(MASTER_KEY_PATH, 'utf-8');
+    return key.trim();
+  } catch (e) {
+    return null;
+  }
+}
 
 import {
   DEFAULT_MESSAGE_LIMIT,
@@ -133,6 +151,9 @@ export async function registerRoutes(
       }
     });
 
+    const trustedKey = await getTrustedKey();
+    const isLocal = request.hostname.includes('localhost') || request.hostname.includes('127.0.0.1');
+
     return { 
       projects: projects.map(p => ({
         id: p.id,
@@ -143,16 +164,14 @@ export async function registerRoutes(
         activeTasksCount: p._count.tasks,
         createdAt: p.createdAt,
         // Only expose key to local dashboard for administrative ease
-        apiKey: request.hostname.includes('localhost') || request.hostname.includes('127.0.0.1') ? p.apiKey : null
+        apiKey: isLocal ? trustedKey : null
       }))
     };
   });
 
-  });
-
   app.post("/api/projects", async (request, reply) => {
     const providedKey = request.headers["x-hive-key"] as string;
-    const serverKey = process.env.HIVE_API_KEY;
+    const trustedKey = await getTrustedKey();
 
     const parsed = createProjectSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -161,14 +180,9 @@ export async function registerRoutes(
 
     const { id, name, description } = parsed.data;
 
-    // Check for existing project
-    const existing = await services.prisma.project.findUnique({ where: { id } });
-
-    if (existing) {
-      // If project has a key, verify it
-      if (existing.apiKey && providedKey !== existing.apiKey && providedKey !== serverKey) {
-        return reply.status(401).send({ error: { code: "UNAUTHORIZED", message: "Invalid API key for this project." } });
-      }
+    // Security: Only the human (with trustedKey) can create/update projects
+    if (trustedKey && providedKey !== trustedKey) {
+      return reply.status(401).send({ error: { code: "UNAUTHORIZED", message: "Administrative authorization required." } });
     }
 
     const project = await services.prisma.project.upsert({
@@ -177,7 +191,7 @@ export async function registerRoutes(
         id,
         name,
         description: description ?? null,
-        apiKey: providedKey || null
+        apiKey: trustedKey || null
       },
       update: {
         name,
@@ -190,16 +204,11 @@ export async function registerRoutes(
 
   app.delete("/api/projects/:projectId", async (request, reply) => {
     const providedKey = request.headers["x-hive-key"] as string;
-    const serverKey = process.env.HIVE_API_KEY;
+    const trustedKey = await getTrustedKey();
     const { projectId } = request.params as any;
 
-    const project = await services.prisma.project.findUnique({ where: { id: projectId } });
-    if (!project) {
-      return reply.status(404).send({ error: { code: "NOT_FOUND", message: "Project not found." } });
-    }
-
-    // Security check: Must have project key OR master server key
-    if (project.apiKey && providedKey !== project.apiKey && providedKey !== serverKey) {
+    // Security check: Must match the global trusted key
+    if (trustedKey && providedKey !== trustedKey) {
       return reply.status(401).send({ error: { code: "UNAUTHORIZED", message: "Administrative authorization required." } });
     }
 
@@ -313,19 +322,10 @@ export async function registerRoutes(
     // Security: Protect human_supervisor identity
     if (senderId === 'human_supervisor') {
       const providedKey = request.headers["x-hive-key"] as string;
-      const serverKey = process.env.HIVE_API_KEY;
+      const trustedKey = await getTrustedKey();
 
-      // 1. If Master Key is set in server environment, it MUST match
-      if (serverKey && providedKey !== serverKey) {
-        return reply.status(401).send({ error: { code: "UNAUTHORIZED", message: "Master administrative authorization required." } });
-      }
-
-      // 2. Fallback: If no Master Key, but project has its own key, it MUST match
-      if (!serverKey) {
-        const project = await services.prisma.project.findUnique({ where: { id: projectId } });
-        if (project?.apiKey && providedKey !== project.apiKey) {
-          return reply.status(401).send({ error: { code: "UNAUTHORIZED", message: "Project-level administrative authorization required." } });
-        }
+      if (trustedKey && providedKey !== trustedKey) {
+        return reply.status(401).send({ error: { code: "UNAUTHORIZED", message: "Human impersonation detected. Invalid Master API key." } });
       }
     }
 

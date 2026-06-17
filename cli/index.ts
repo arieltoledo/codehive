@@ -4,35 +4,37 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline/promises';
 import crypto from 'node:crypto';
+import os from 'node:os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 const mcpServerPath = path.join(rootDir, 'mcp/server.ts');
 
+const GLOBAL_CONFIG_DIR = path.join(os.homedir(), '.codehive');
+const MASTER_KEY_PATH = path.join(GLOBAL_CONFIG_DIR, 'master.key');
+
+async function getMasterKey() {
+  try {
+    await fs.mkdir(GLOBAL_CONFIG_DIR, { recursive: true });
+    try {
+      const key = await fs.readFile(MASTER_KEY_PATH, 'utf-8');
+      return key.trim();
+    } catch (e) {
+      const newKey = crypto.randomBytes(32).toString('hex');
+      await fs.writeFile(MASTER_KEY_PATH, newKey, 'utf-8');
+      // Restrict permissions
+      try { await fs.chmod(MASTER_KEY_PATH, 0o600); } catch (e) {}
+      return newKey;
+    }
+  } catch (err) {
+    console.error('Error managing global master key:', err);
+    return null;
+  }
+}
+
 const MASTER_PROTOCOL = `
 # 🐝 CODEHIVE_PROTOCOL
-
-You are operating within a **CodeHive** project. This project is managed by a central Command & Control server. You MUST adhere to the following autonomous orchestration protocols:
-
-## 1. Tactical Synchronization
-- **Registration**: Immediately call \`agent.register\` with your identity. If you are part of a sub-task, provide the \`parent_agent_id\`.
-- **Status Greet**: Send a "Ready" or "Online" message to the \`coordination\` room via \`chat.send\`.
-- **Listening**: Periodically check \`chat.read\` for orders from the Human Supervisor or Coordinator agents.
-
-## 2. Shared Intelligence (Shared Memory)
-- **Planning**: BEFORE any significant code change, publish your intent as a plan (e.g., \`plan_name.pending.md\`) using \`memory.publish\`.
-- **Verification**: Use \`memory.list\` and \`memory.read\` to check for Image, PDF, or Markdown context uploaded by the Human.
-
-## 3. Operations
-- **Task Tracking**: Use \`task.start\` and \`task.finish\` for every discrete work unit. Link sub-tasks via \`parent_task_id\`.
-- **Decision Log**: Record critical architectural or logic changes using \`traceability.record_decision\`.
-
-## 4. MCP Infrastructure
-- **Server Command**: \`npx tsx ${mcpServerPath}\`
-- **Identity Awareness**: The \`projectId\` is automatically detected from your CWD.
-
----
-**SECURITY NOTICE**: Never attempt to read or modify files within \`.codehive/\` except for \`PROTOCOL.md\`.
+...
 `;
 
 const INJECTION_HEADER = `<!-- CODEHIVE_START -->
@@ -50,7 +52,7 @@ async function init() {
     output: process.stdout,
   });
 
-  console.log('\x1b[33m%s\x1b[0m', '🐝 Initializing CodeHive (Secure Mode)...');
+  console.log('\x1b[33m%s\x1b[0m', '🐝 Initializing CodeHive (Global Secure Mode)...');
   
   const projectRoot = process.cwd();
   const folderName = path.basename(projectRoot);
@@ -60,26 +62,19 @@ async function init() {
 
   rl.close();
 
-  const codehiveDir = path.join(projectRoot, '.codehive');
-
-  // 1. Create .codehive directory
-  await fs.mkdir(codehiveDir, { recursive: true });
-
-  // 2. Handle API Key (Project-local, private from agents)
-  let apiKey = '';
-  const keyPath = path.join(codehiveDir, 'api.key');
-  try {
-    apiKey = await fs.readFile(keyPath, 'utf-8');
-    console.log('- \x1b[32mExisting API key loaded.\x1b[0m');
-  } catch (e) {
-    apiKey = crypto.randomBytes(24).toString('hex');
-    await fs.writeFile(keyPath, apiKey, 'utf-8');
-    // Set permissions to be readable only by owner if on linux
-    try { await fs.chmod(keyPath, 0o600); } catch (e) {}
-    console.log('- \x1b[32mGenerated secure project-local API key.\x1b[0m');
+  // 1. Get/Create Global Master Key
+  const masterKey = await getMasterKey();
+  if (!masterKey) {
+    console.log('\x1b[31mFailed to establish secure identity. Aborting.\x1b[0m');
+    return;
   }
 
-  // 3. Write Master Protocol
+  const codehiveDir = path.join(projectRoot, '.codehive');
+
+  // 2. Create project .codehive directory
+  await fs.mkdir(codehiveDir, { recursive: true });
+
+  // 3. Write Master Protocol (Key is NOT stored here anymore)
   await fs.writeFile(path.join(codehiveDir, 'PROTOCOL.md'), MASTER_PROTOCOL.trim(), 'utf-8');
   console.log('- \x1b[32mSynchronized .codehive/PROTOCOL.md\x1b[0m');
 
@@ -90,7 +85,7 @@ async function init() {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'x-hive-key': apiKey.trim()
+        'x-hive-key': masterKey
       },
       body: JSON.stringify({
         id: projectId,
