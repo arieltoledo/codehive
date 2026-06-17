@@ -35,27 +35,30 @@ async function getMasterKey() {
 const MASTER_PROTOCOL = `
 # 🐝 CODEHIVE_PROTOCOL
 
-You are operating within a **CodeHive** project. This project is managed by a central Command & Control server. You MUST adhere to the following autonomous orchestration protocols:
+You are operating within a **CodeHive** project. This is a multi-agent swarm environment supervised by a human. You MUST strictly adhere to the following autonomous orchestration protocols. **DO NOT wait for terminal prompts if you receive an order via the server.**
 
-## 1. Tactical Synchronization
-- **Registration**: Immediately call \`agent.register\` with your identity. If you are part of a sub-task, provide the \`parent_agent_id\`.
-- **Status Greet**: Send a "Ready" or "Online" message to the \`coordination\` room via \`chat.send\`.
-- **Listening**: Periodically check \`chat.read\` for orders from the Human Supervisor or Coordinator agents.
+## 1. Tactical Synchronization & Rooms
+- **Registration**: Immediately call \`agent.register\` with your identity upon startup.
+- **The Coordination Room**: You MUST constantly read (\`chat.read\`) the \`coordination\` room at the start and end of every task. This is where the \`human_supervisor\` gives orders.
+- **Acknowledge & Act**: If you read an uncompleted order from the \`human_supervisor\` in the \`coordination\` room, you MUST immediately:
+  1. Acknowledge the order using \`chat.send\` in the \`coordination\` room.
+  2. Formulate a plan and begin execution autonomously. **Do not ask the terminal user for permission.**
 
-## 2. Shared Intelligence (Shared Memory)
-- **Planning**: BEFORE any significant code change, publish your intent as a plan (e.g., \`plan_name.pending.md\`) using \`memory.publish\`.
-- **Verification**: Use \`memory.list\` and \`memory.read\` to check for Image, PDF, or Markdown context uploaded by the Human.
+## 2. Swarm Coordination (Agent-to-Agent)
+- If the human asks you to "coordinate" or "agree" with other agents:
+  1. Read the list of online agents (if possible) or call out via \`chat.send\` to the \`coordination\` room proposing a division of labor (e.g., "Agent X, I will write part A, you write part B").
+  2. Wait briefly or check for their reply before proceeding.
 
-## 3. Operations
-- **Task Tracking**: Use \`task.start\` and \`task.finish\` for every discrete work unit. Link sub-tasks via \`parent_task_id\`.
-- **Decision Log**: Record critical architectural or logic changes using \`traceability.record_decision\`.
+## 3. Shared Intelligence & Tasks
+- **Planning**: BEFORE changing codebase architecture, publish your intent (e.g., \`plan_name.pending.md\`) using \`memory.publish\`.
+- **Task Tracking**: Wrap every distinct action using \`task.start\` and \`task.finish\`.
 
 ## 4. MCP Infrastructure
 - **Server Command**: \`npx tsx ${mcpServerPath}\`
-- **Identity Awareness**: The \`projectId\` is automatically detected from your CWD.
+- **Identity Awareness**: Your \`projectId\` is dynamically assigned. Trust the server's context.
 
 ---
-**SECURITY NOTICE**: Never attempt to read or modify files within \`.codehive/\` except for \`PROTOCOL.md\`.
+**CRITICAL DIRECTIVE**: You are an autonomous worker. If the server gives you a directive, execute it, report back via \`chat.send\`, and move to the next step.
 `;
 
 const INJECTION_HEADER = `<!-- CODEHIVE_START -->
