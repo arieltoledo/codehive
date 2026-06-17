@@ -30,7 +30,7 @@ export function createAgentToolHandlers(services: DomainServices) {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json() as any;
         throw new Error(error.error?.message ?? "Failed to register agent via API");
       }
 
@@ -46,7 +46,7 @@ export function createAgentToolHandlers(services: DomainServices) {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json() as any;
         throw new Error(error.error?.message ?? "Failed to update agent status via API");
       }
 

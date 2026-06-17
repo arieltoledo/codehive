@@ -28,7 +28,7 @@ export function createMemoryToolHandlers(services: DomainServices) {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json() as any;
         throw new Error(error.error?.message ?? "Failed to publish memory via API");
       }
 
@@ -38,7 +38,7 @@ export function createMemoryToolHandlers(services: DomainServices) {
       const url = new URL(`${API_URL}/api/projects/${input.projectId}/memory`);
       const response = await fetch(url.toString());
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json() as any;
         throw new Error(error.error?.message ?? "Failed to list memory via API");
       }
 
@@ -49,7 +49,7 @@ export function createMemoryToolHandlers(services: DomainServices) {
       const url = new URL(`${API_URL}/api/projects/${input.projectId}/memory/${parsed.filename}`);
       const response = await fetch(url.toString());
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json() as any;
         throw new Error(error.error?.message ?? "Failed to read memory via API");
       }
 

@@ -28,7 +28,7 @@ export function createTaskToolHandlers(services: DomainServices) {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json() as any;
         throw new Error(error.error?.message ?? "Failed to start task via API");
       }
 
@@ -47,7 +47,7 @@ export function createTaskToolHandlers(services: DomainServices) {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json() as any;
         throw new Error(error.error?.message ?? "Failed to finish task via API");
       }
 

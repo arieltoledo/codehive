@@ -98,6 +98,12 @@ const recordDecisionSchema = z.object({
   reason: z.string().min(1)
 });
 
+const createProjectSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().optional()
+});
+
 const publishMemorySchema = z.object({
   projectId: z.string().min(1).optional(),
   filename: z.string().min(1),
@@ -139,6 +145,28 @@ export async function registerRoutes(
         createdAt: p.createdAt
       }))
     };
+  });
+
+  app.post("/api/projects", async (request, reply) => {
+    const parsed = createProjectSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: { code: "INVALID_BODY", message: parsed.error.message } });
+    }
+
+    const project = await services.prisma.project.upsert({
+      where: { id: parsed.data.id },
+      create: {
+        id: parsed.data.id,
+        name: parsed.data.name,
+        description: parsed.data.description ?? null
+      },
+      update: {
+        name: parsed.data.name,
+        description: parsed.data.description ?? null
+      }
+    });
+
+    return project;
   });
 
   app.delete("/api/projects/:projectId", async (request, reply) => {

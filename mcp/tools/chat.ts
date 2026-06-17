@@ -31,7 +31,7 @@ export function createChatToolHandlers(services: DomainServices) {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json() as any;
         throw new Error(error.error?.message ?? "Failed to send message via API");
       }
 
@@ -46,11 +46,11 @@ export function createChatToolHandlers(services: DomainServices) {
 
       const response = await fetch(url.toString());
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json() as any;
         throw new Error(error.error?.message ?? "Failed to read messages via API");
       }
 
-      const { messages } = await response.json();
+      const { messages } = await response.json() as any;
       return { messages };
     }
   };

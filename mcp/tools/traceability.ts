@@ -35,7 +35,7 @@ export function createTraceabilityToolHandlers(services: DomainServices) {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json() as any;
         throw new Error(error.error?.message ?? "Failed to claim file via API");
       }
 
@@ -51,7 +51,7 @@ export function createTraceabilityToolHandlers(services: DomainServices) {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json() as any;
         throw new Error(error.error?.message ?? "Failed to release file via API");
       }
 
@@ -67,7 +67,7 @@ export function createTraceabilityToolHandlers(services: DomainServices) {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json() as any;
         throw new Error(error.error?.message ?? "Failed to record decision via API");
       }
 

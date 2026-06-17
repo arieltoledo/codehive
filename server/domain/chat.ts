@@ -9,7 +9,7 @@ import type { MessageRecord, ReadMessagesInput, SendMessageInput } from "./types
 function toMessageRecord(message: Message): MessageRecord {
   return {
     messageId: message.id,
-    projectId: message.room?.projectId ?? "local",
+    projectId: (message as any).room?.projectId ?? "local",
     roomId: message.roomId,
     senderId: message.senderId,
     senderType: message.senderType,
