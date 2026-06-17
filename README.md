@@ -1,90 +1,65 @@
 # CodeHive 🐝
 
-**CodeHive** es una plataforma de mando y control diseñada para supervisar, coordinar y auditar enjambres de agentes de IA (como Codex, Gemini, OpenHands, Cursor, etc.) a través del protocolo **MCP (Model Context Protocol)**.
+**The Premium Command & Control Center for AI Agent Swarms.**
 
-Ofrece una visión centralizada y en tiempo real de lo que tus agentes están pensando, planeando y ejecutando en múltiples proyectos simultáneamente.
-
-![CodeHive Dashboard](docs/assets/dashboard.png)
-
-### 🖼️ Dashboard Layout
-
-```mermaid
-graph TD
-    subgraph Dashboard
-        direction LR
-        A[<b>AGENTS</b><br/>Hierarchy View] --- B[<b>COMMUNICATION_LOG</b><br/>Real-time Discord-style Chat]
-        B --- C[<b>SHARED_MEMORY</b><br/>MD Plans & Task Status]
-    end
-```
-
-*(Se recomienda capturar una imagen real del dashboard y reemplazar este diagrama para una mejor presentación)*
-
-## ✨ Características Principales
-
--   **🛸 Coordinación Multi-Agente**: Visualiza jerarquías de agentes (Coordinadores y Sub-agentes) trabajando en sincronía.
--   **💬 Chat en Tiempo Real**: Log centralizado de comunicaciones entre agentes con capacidad de intervención humana directa.
--   **🧠 Memoria Compartida (Knowledge Base)**: Espacio donde los agentes publican sus planes (.md) para evitar conflictos y compartir contexto operativo.
--   **📁 Aislamiento por Proyecto**: Gestión automática de múltiples espacios de trabajo basada en la ruta local del proyecto.
--   **🐝 CLI `hive`**: Herramienta de línea de comandos para "activar" cualquier proyecto y conectar agentes en segundos.
--   **🕵️ Auditoría y Trazabilidad**: Registro de decisiones, tareas activas y archivos reclamados por los agentes.
-
-## 🚀 Inicio Rápido
-
-### 1. Instalación del Centro de Mando
-
-Clona este repositorio y configura el servidor maestro:
-
-```bash
-git clone https://github.com/tu-usuario/code-hive.git
-cd code-hive
-npm install
-npm run db:push
-npm install -g .  # Instala la CLI 'hive' globalmente
-```
-
-### 2. Iniciar el Servidor (Modo Daemon)
-
-Para que la colmena esté siempre activa en segundo plano:
-
-```bash
-pm2 start ecosystem.config.cjs
-```
-> Accede al dashboard en: [http://localhost:3000](http://localhost:3000)
-
-### 3. Activar un Proyecto
-
-Ve a la carpeta de cualquier proyecto de desarrollo y únelo a la colmena:
-
-```bash
-cd /ruta/a/tu/proyecto
-hive init
-```
-Esto inyectará las instrucciones necesarias para que los agentes sepan cómo conectarse al servidor MCP de CodeHive.
-
-## 🤖 Cómo Conectar Agentes
-
-CodeHive funciona mediante un servidor MCP. Configura tu herramienta de agentes (Cursor, Claude Desktop, etc.) para ejecutar el siguiente comando:
-
-```bash
-npx tsx /ruta/absoluta/a/code-hive/mcp/server.ts
-```
-
-### Protocolo de Activación para Agentes
-Cuando un agente entra en un proyecto activado por `hive init`, leerá automáticamente:
-1.  **Registro**: Debe llamar a `agent.register`.
-2.  **Saludo**: Debe enviar un mensaje inicial a `coordination`.
-3.  **Transparencia**: Debe usar `memory.publish` para compartir su plan antes de actuar.
-
-## 🛠️ Stack Tecnológico
-
--   **Backend**: Node.js, Fastify, WebSocket, MCP SDK.
--   **Frontend**: React, Vite, Tailwind CSS, Lucide Icons.
--   **Persistencia**: Prisma ORM con SQLite.
--   **Gestión de Procesos**: PM2.
-
-## 🤝 Contribuir
-
-¡Las contribuciones son bienvenidas! Si tienes ideas para mejorar la colmena, abre un Issue o un Pull Request.
+CodeHive is a high-performance orchestration platform designed to coordinate, observe, and audit multiple AI agents (Gemini, Claude, Cursor, Codex) through a unified MCP-based dashboard. Featuring a premium Discord-inspired interface, CodeHive turns fragmented agent logs into a tactical mission control room.
 
 ---
-Creado para humanos que quieren liderar la revolución de los agentes. 🐝
+
+## ✨ Key Features
+
+- **🎮 Discord-Inspired UI**: A professional, 4-column tactical layout for superior situational awareness.
+- **🚀 Unified Swarm Protocol**: Centralized orchestration via `.codehive/PROTOCOL.md`.
+- **💉 Hybrid Injection**: The `hive init` command layers CodeHive over existing projects without overwriting native agent optimizations (CLAUDE.md, GEMINI.md, etc.).
+- **🧠 Shared Intelligence**: Drag-and-drop support for Images, PDFs, and Markdowns in a project-wide Knowledge Base.
+- **🏗️ Task Hierarchies**: Group agents into "Squads" with parent-child task tracking.
+- **🛡️ Human-in-the-Loop**: Integrated approval gates for agent-generated plans and critical decisions.
+
+---
+
+## 🛠️ Quick Start
+
+### 1. Install & Launch the Master Server
+```bash
+npm install
+npm run build
+pm2 start ecosystem.config.cjs # Runs the server in the background
+```
+
+### 2. Activate a Project (The Hive CLI)
+Navigate to any project on your machine and run:
+```bash
+# Register the project and inject swarm protocols
+hive init
+```
+
+### 3. Connect Your Agents
+Open your favorite AI tool (Gemini CLI, Claude Code, Cursor) and it will automatically detect the `.codehive` protocol.
+> *"Review the Hive Protocol and report for duty."*
+
+---
+
+## 📡 Operational Stack
+
+- **Frontend**: React 19 + Tailwind v4 (Discord Aesthetic)
+- **Backend**: Fastify (Node.js ESM)
+- **Persistence**: Prisma + SQLite
+- **Protocol**: Model Context Protocol (MCP)
+- **Process Management**: PM2
+
+---
+
+## 📜 Swarm Protocol (`.codehive/`)
+
+CodeHive uses a "Skill-based" approach. The `hive init` command creates a hidden directory that acts as the source of truth for all agents. Your project root stays clean, and your agents stay synchronized.
+
+- **`PROTOCOL.md`**: The master behavioral contract.
+- **Shared Memory**: Physically stored in `.agents/memory/` for cross-agent persistence.
+
+---
+
+## 🤝 Contribution
+
+Join the swarm. Contributions to the core engine or the UI are welcome.
+
+**CodeHive** 🐝 — *Orchestrate the Future.*
