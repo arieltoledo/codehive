@@ -34,7 +34,28 @@ async function getMasterKey() {
 
 const MASTER_PROTOCOL = `
 # 🐝 CODEHIVE_PROTOCOL
-...
+
+You are operating within a **CodeHive** project. This project is managed by a central Command & Control server. You MUST adhere to the following autonomous orchestration protocols:
+
+## 1. Tactical Synchronization
+- **Registration**: Immediately call \`agent.register\` with your identity. If you are part of a sub-task, provide the \`parent_agent_id\`.
+- **Status Greet**: Send a "Ready" or "Online" message to the \`coordination\` room via \`chat.send\`.
+- **Listening**: Periodically check \`chat.read\` for orders from the Human Supervisor or Coordinator agents.
+
+## 2. Shared Intelligence (Shared Memory)
+- **Planning**: BEFORE any significant code change, publish your intent as a plan (e.g., \`plan_name.pending.md\`) using \`memory.publish\`.
+- **Verification**: Use \`memory.list\` and \`memory.read\` to check for Image, PDF, or Markdown context uploaded by the Human.
+
+## 3. Operations
+- **Task Tracking**: Use \`task.start\` and \`task.finish\` for every discrete work unit. Link sub-tasks via \`parent_task_id\`.
+- **Decision Log**: Record critical architectural or logic changes using \`traceability.record_decision\`.
+
+## 4. MCP Infrastructure
+- **Server Command**: \`npx tsx ${mcpServerPath}\`
+- **Identity Awareness**: The \`projectId\` is automatically detected from your CWD.
+
+---
+**SECURITY NOTICE**: Never attempt to read or modify files within \`.codehive/\` except for \`PROTOCOL.md\`.
 `;
 
 const INJECTION_HEADER = `<!-- CODEHIVE_START -->
