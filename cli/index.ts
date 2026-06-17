@@ -1,7 +1,4 @@
-#!/usr/bin/env node
-if (typeof process !== 'undefined' && process.env.NODE_NO_WARNINGS !== '1') {
-  process.env.NODE_NO_WARNINGS = '1';
-}
+#!/usr/bin/env -S node --no-warnings
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
