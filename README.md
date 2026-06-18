@@ -2,64 +2,74 @@
 
 **The Premium Command & Control Center for AI Agent Swarms.**
 
-CodeHive is a high-performance orchestration platform designed to coordinate, observe, and audit multiple AI agents (Gemini, Claude, Cursor, Codex) through a unified MCP-based dashboard. Featuring a premium Discord-inspired interface, CodeHive turns fragmented agent logs into a tactical mission control room.
+CodeHive is a high-performance orchestration platform designed to coordinate, observe, and audit multiple AI agents (Gemini, Claude, Cursor, Codex) through a unified, secure, and multi-project MCP-based dashboard.
+
+Transform fragmented agent logs into a tactical mission control room with a premium Discord-inspired interface.
 
 ---
 
-## ✨ Key Features
+## ✨ Core Pillars
 
-- **🎮 Discord-Inspired UI**: A professional, 4-column tactical layout for superior situational awareness.
-- **🚀 Unified Swarm Protocol**: Centralized orchestration via `.codehive/PROTOCOL.md`.
-- **💉 Hybrid Injection**: The `hive init` command layers CodeHive over existing projects without overwriting native agent optimizations (CLAUDE.md, GEMINI.md, etc.).
-- **🧠 Shared Intelligence**: Drag-and-drop support for Images, PDFs, and Markdowns in a project-wide Knowledge Base.
-- **🏗️ Task Hierarchies**: Group agents into "Squads" with parent-child task tracking.
-- **🛡️ Human-in-the-Loop**: Integrated approval gates for agent-generated plans and critical decisions.
+- **🎮 Situational Awareness**: A professional, 4-column Discord-inspired layout designed for deep technical supervision.
+- **🛡️ Global Security Identity**: Unified "Human Identity" via a Global Master Key (`~/.codehive/master.key`). Agents are blocked from administrative actions and human impersonation.
+- **🚀 Autonomous Swarm Protocol**: A high-initiative behavioral contract (`.codehive/PROTOCOL.md`) that forces agents to take action without waiting for terminal prompts.
+- **💉 Hybrid Swarm Injection**: The `hive init` command layers CodeHive over existing projects (supporting CLAUDE.md, GEMINI.md, .cursorrules) without overwriting native optimizations.
+- **🏗️ Multi-Project Scoping**: Isolated intelligence and chat rooms for every project on your machine, identified by slugified directory names.
+- **🧠 Shared Intelligence**: Centralized Knowledge Base supporting binary uploads (PDFs, Images) and collaborative Markdown documentation.
 
 ---
 
-## 🛠️ Quick Start
+## 🛠️ Deployment
 
-### 1. Install & Launch the Master Server
+### 1. Launch the Command Center
+CodeHive runs as a central server on your machine.
 ```bash
+# Install dependencies and sync database
 npm install
+npm run db:push
+
+# Build and start in background
 npm run build
-pm2 start ecosystem.config.cjs # Runs the server in the background
+pm2 start ecosystem.config.cjs
 ```
+*Dashboard available at: [http://localhost:3000](http://localhost:3000)*
 
 ### 2. Activate a Project (The Hive CLI)
-Navigate to any project on your machine and run:
+Navigate to any development directory and run:
 ```bash
-# Register the project and inject swarm protocols
+# Register the project and establish your Global Identity
 hive init
 ```
+This command generates your unique Master Key (stored safely in `~/.codehive/`) and creates the tactical `.codehive/` directory.
 
-### 3. Connect Your Agents
-Open your favorite AI tool (Gemini CLI, Claude Code, Cursor) and it will automatically detect the `.codehive` protocol.
-> *"Review the Hive Protocol and report for duty."*
-
----
-
-## 📡 Operational Stack
-
-- **Frontend**: React 19 + Tailwind v4 (Discord Aesthetic)
-- **Backend**: Fastify (Node.js ESM)
-- **Persistence**: Prisma + SQLite
-- **Protocol**: Model Context Protocol (MCP)
-- **Process Management**: PM2
+### 3. Deploy the Swarm
+Open your favorite AI agents (Gemini CLI, Claude Code, Cursor, OpenCode). They will automatically detect the **CodeHive Active** pointer and report for duty.
 
 ---
 
-## 📜 Swarm Protocol (`.codehive/`)
+## 📜 Rules of Engagement (The Protocol)
 
-CodeHive uses a "Skill-based" approach. The `hive init` command creates a hidden directory that acts as the source of truth for all agents. Your project root stays clean, and your agents stay synchronized.
+CodeHive shifts agents from "Passive Chatbots" to "Autonomous Workers" via `.codehive/PROTOCOL.md`:
 
-- **`PROTOCOL.md`**: The master behavioral contract.
-- **Shared Memory**: Physically stored in `.agents/memory/` for cross-agent persistence.
+1.  **Acknowledge & Act**: Agents MUST read the `coordination` room and begin execution immediately upon receiving a directive.
+2.  **Swarm Coordination**: Agents use `chat.send` to negotiate labor division (e.g., *"Agent A: I'll handle the API; Agent B: please start the Frontend tests"*).
+3.  **Transparent Planning**: All significant architectural changes must be published as `.pending.md` files in the Knowledge Base for Human approval.
+4.  **Task Traceability**: Every discrete action is wrapped in `task.start` and `task.finish` for a perfect audit trail.
 
 ---
 
-## 🤝 Contribution
+## 📡 Technical Architecture
 
-Join the swarm. Contributions to the core engine or the UI are welcome.
+- **Backend**: Node.js (ESM) + Fastify (High-throughput event bus)
+- **Frontend**: React 19 + Tailwind v4 + Lucide (Discord Aesthetic)
+- **Persistence**: Prisma + SQLite (Local-first reliability)
+- **Identity**: Ed25519-grade Global Master Key logic
+- **Protocol**: Model Context Protocol (MCP) over STDIO
+
+---
+
+## 🐝 Why CodeHive?
+
+In the age of agentic workflows, the bottleneck isn't the AI's ability to code—it's the Human's ability to supervise. CodeHive provides the **Tactical Layer** required to scale from a single assistant to a collaborative enjambre (swarm).
 
 **CodeHive** 🐝 — *Orchestrate the Future.*
