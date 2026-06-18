@@ -104,34 +104,85 @@ async function init() {
   // 3. Write Master Protocol (Key is NOT stored here anymore)
   await fs.writeFile(path.join(codehiveDir, 'PROTOCOL.md'), MASTER_PROTOCOL.trim(), 'utf-8');
   console.log('- \x1b[32mSynchronized .codehive/PROTOCOL.md\x1b[0m');
+// 4. Register with Central API
+const projectId = folderName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+try {
+  const response = await fetch('http://localhost:3000/api/projects', {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'x-hive-key': masterKey
+    },
+    body: JSON.stringify({
+      id: projectId,
+      name: projectName,
+      description: projectDescription
+    })
+  });
 
-  // 4. Register with Central API
-  const projectId = folderName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+  if (response.ok) {
+    console.log('- \x1b[32mRegistered project with Central Dashboard.\x1b[0m');
+  } else {
+    const errData = await response.json() as any;
+    console.log(`- \x1b[31mRegistration failed: ${errData.error?.message || 'Unknown error'}\x1b[0m`);
+  }
+} catch (err) {
+  console.log('- \x1b[33mServer unreachable. Project will auto-register on first connection.\x1b[0m');
+}
+
+// 5. Auto-Detect and Inject MCP Configs
+console.log('\n\x1b[36m%s\x1b[0m', '🔍 Scanning for Agent configurations...');
+await injectOpenCodeConfig(projectRoot, mcpServerPath);
+
+console.log('\n\x1b[32m%s\x1b[0m', '🐝 Hive initialized successfully. Your swarm is ready.');
+}
+
+async function injectOpenCodeConfig(projectRoot: string, mcpPath: string) {
+const openCodePath = path.join(projectRoot, 'opencode.jsonc');
+try {
+  const content = await fs.readFile(openCodePath, 'utf-8');
+  console.log('   Found OpenCode configuration (opencode.jsonc).');
+
+  let jsonContent = content;
+  // Basic clean up of comments to parse JSON, assuming standard formatting
+  const cleanedJson = content.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  let config;
   try {
-    const response = await fetch('http://localhost:3000/api/projects', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'x-hive-key': masterKey
-      },
-      body: JSON.stringify({
-        id: projectId,
-        name: projectName,
-        description: projectDescription
-      })
-    });
-
-    if (response.ok) {
-      console.log('- \x1b[32mRegistered project with Central Dashboard.\x1b[0m');
-    } else {
-      const errData = await response.json() as any;
-      console.log(`- \x1b[31mRegistration failed: ${errData.error?.message || 'Unknown error'}\x1b[0m`);
-    }
-  } catch (err) {
-    console.log('- \x1b[33mServer unreachable. Project will auto-register on first connection.\x1b[0m');
+    config = JSON.parse(cleanedJson);
+  } catch (e) {
+    console.log('   \x1b[33m[!] Could not parse opencode.jsonc. Skipping auto-injection.\x1b[0m');
+    return;
   }
 
-  // 5. Smart Injection in existing agent files
+  if (!config.mcpServers) {
+    config.mcpServers = {};
+  }
+
+  if (!config.mcpServers.codehive) {
+    config.mcpServers.codehive = {
+      command: "npx",
+      args: ["tsx", mcpPath]
+    };
+
+    // We rewrite the file using string manipulation to preserve user's comments if possible, 
+    // or fallback to rewriting the JSON if it's too complex. For safety, we'll rewrite the JSON beautifully.
+    // A more robust solution would use a JSONC parser/stringifier.
+    await fs.writeFile(openCodePath, JSON.stringify(config, null, 2), 'utf-8');
+    console.log('   \x1b[32m[✓] Successfully injected CodeHive MCP into opencode.jsonc\x1b[0m');
+  } else {
+    console.log('   \x1b[32m[✓] CodeHive MCP already configured in opencode.jsonc\x1b[0m');
+  }
+
+} catch (e: any) {
+  if (e.code === 'ENOENT') {
+    // File doesn't exist, which is fine.
+  } else {
+    console.log(`   \x1b[33m[!] Error checking OpenCode config: ${e.message}\x1b[0m`);
+  }
+}
+}
+
+init().catch(err => {
   const agentFiles = ['AGENTS.md', 'GEMINI.md', 'CLAUDE.md', '.cursorrules', '.clinerules'];
   
   for (const filename of agentFiles) {
