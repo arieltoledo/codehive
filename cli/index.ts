@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import os from 'node:os';
 import * as clack from '@clack/prompts';
+import stripJsonComments from 'strip-json-comments';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -481,7 +482,7 @@ async function injectOpenCodeConfig(projectRoot: string, mcpPath: string) {
   try {
     const content = await fs.readFile(jsonPath, 'utf-8');
     console.log('   Found OpenCode configuration (opencode.json).');
-    const cleanedJson = content.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    const cleanedJson = stripJsonComments(content).replace(/,\s*([}\]])/g, '$1');
     try {
       config = JSON.parse(cleanedJson);
     } catch (e) {
@@ -497,7 +498,7 @@ async function injectOpenCodeConfig(projectRoot: string, mcpPath: string) {
     try {
       const content = await fs.readFile(jsoncPath, 'utf-8');
       console.log('   Found OpenCode configuration (opencode.jsonc).');
-      const cleanedJson = content.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+      const cleanedJson = stripJsonComments(content).replace(/,\s*([}\]])/g, '$1');
       try {
         config = JSON.parse(cleanedJson);
         targetPath = jsoncPath;
@@ -544,7 +545,7 @@ async function injectOpenCodeGlobalConfig(mcpPath: string) {
   try {
     await fs.mkdir(globalConfigDir, { recursive: true });
     const content = await fs.readFile(globalConfigPath, 'utf-8');
-    const cleanedJson = content.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    const cleanedJson = stripJsonComments(content).replace(/,\s*([}\]])/g, '$1');
     try {
       config = JSON.parse(cleanedJson);
     } catch (e) {
