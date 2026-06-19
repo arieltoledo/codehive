@@ -77,7 +77,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   const projectId = folderName.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
   server.registerTool(
-    "agent.register",
+    "agent_register",
     {
       title: "Register agent",
       description: "Register or refresh an agent in the control room.",
@@ -93,7 +93,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "agent.update_status",
+    "agent_update_status",
     {
       title: "Update agent status",
       description: "Update the status of a registered agent.",
@@ -109,7 +109,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "chat.send",
+    "chat_send",
     {
       title: "Send chat message",
       description: "Send a message to a coordination room.",
@@ -125,7 +125,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "chat.read",
+    "chat_read",
     {
       title: "Read chat messages",
       description: "Read recent messages from a coordination room.",
@@ -141,7 +141,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "task.start",
+    "task_start",
     {
       title: "Start task",
       description: "Mark the beginning of a discrete work unit.",
@@ -157,7 +157,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "task.finish",
+    "task_finish",
     {
       title: "Finish task",
       description: "Mark a task as completed or failed.",
@@ -173,7 +173,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "traceability.claim_file",
+    "traceability_claim_file",
     {
       title: "Claim file",
       description: "Mark a file as being modified by an agent for a specific task.",
@@ -189,7 +189,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "traceability.release_file",
+    "traceability_release_file",
     {
       title: "Release file",
       description: "Mark a file as released after modification.",
@@ -205,7 +205,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "traceability.record_decision",
+    "traceability_record_decision",
     {
       title: "Record decision",
       description: "Log an important architectural or logic decision.",
@@ -221,7 +221,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "memory.publish",
+    "memory_publish",
     {
       title: "Publish to shared memory",
       description: "Save information to the shared project knowledge base.",
@@ -237,7 +237,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "memory.list",
+    "memory_list",
     {
       title: "List shared memory",
       description: "List files in the shared project knowledge base.",
@@ -253,7 +253,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   );
 
   server.registerTool(
-    "memory.read",
+    "memory_read",
     {
       title: "Read shared memory",
       description: "Read a file from the shared project knowledge base.",

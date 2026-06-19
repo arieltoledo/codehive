@@ -40,7 +40,7 @@ Navigate to any development directory and run:
 # Register the project and establish your Global Identity
 hive init
 ```
-This command generates your unique Master Key (stored safely in `~/.codehive/`) and creates the tactical `.codehive/` directory.
+This command generates your unique Master Key (stored safely in `~/.codehive/`), creates the tactical `.codehive/` directory, and presents an interactive agent selection TUI — all detected AI coding agents are pre-selected, and you can toggle any of them on/off with the arrow keys and spacebar before injecting the CodeHive MCP server.
 
 ### 3. Deploy the Swarm
 Open your favorite AI agents (Gemini CLI, Claude Code, Cursor, OpenCode). They will automatically detect the **CodeHive Active** pointer and report for duty.
@@ -52,9 +52,9 @@ Open your favorite AI agents (Gemini CLI, Claude Code, Cursor, OpenCode). They w
 CodeHive shifts agents from "Passive Chatbots" to "Autonomous Workers" via `.codehive/PROTOCOL.md`:
 
 1.  **Acknowledge & Act**: Agents MUST read the `coordination` room and begin execution immediately upon receiving a directive.
-2.  **Swarm Coordination**: Agents use `chat.send` to negotiate labor division (e.g., *"Agent A: I'll handle the API; Agent B: please start the Frontend tests"*).
+2.  **Swarm Coordination**: Agents use `chat_send` to negotiate labor division (e.g., *"Agent A: I'll handle the API; Agent B: please start the Frontend tests"*).
 3.  **Transparent Planning**: All significant architectural changes must be published as `.pending.md` files in the Knowledge Base for Human approval.
-4.  **Task Traceability**: Every discrete action is wrapped in `task.start` and `task.finish` for a perfect audit trail.
+4.  **Task Traceability**: Every discrete action is wrapped in `task_start` and `task_finish` for a perfect audit trail.
 
 ---
 

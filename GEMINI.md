@@ -1,3 +1,10 @@
+<!-- CODEHIVE_START -->
+## 🐝 CodeHive Active
+This project is part of a **CodeHive** swarm. 
+For operational instructions and MCP server configuration, you MUST follow:
+**Protocol**: .codehive/PROTOCOL.md
+<!-- CODEHIVE_END -->
+
 # Project Instructions: MCP Agent Control Room
 
 Foundational guidance for interacting with the **MCP Agent Control Room** codebase.
@@ -71,10 +78,10 @@ npm run db:push  # Synchronize SQLite database schema
 
 You have access to a shared Control Room via MCP. You MUST follow these protocols for coordination:
 
-1. **Self-Registration**: Call `agent.register` immediately to announce your presence.
-2. **Greeting**: Send a message to the 'coordination' room with `chat.send`.
-3. **Transparent Planning**: Publish your execution plan to the shared knowledge base using `memory.publish` BEFORE making major changes.
-4. **Active Listening**: Periodically check `chat.read` for human supervisor feedback.
+1. **Self-Registration**: Call `agent_register` immediately to announce your presence.
+2. **Greeting**: Send a message to the 'coordination' room with `chat_send`.
+3. **Transparent Planning**: Publish your execution plan to the shared knowledge base using `memory_publish` BEFORE making major changes.
+4. **Active Listening**: Periodically check `chat_read` for human supervisor feedback.
 
 **MCP Server Execution Command:**
 `npx tsx /home/arieltoledo/Development/agents_chat_mcp/mcp/server.ts`
@@ -84,10 +91,10 @@ You have access to a shared Control Room via MCP. You MUST follow these protocol
 
 You have access to a shared CodeHive Control Room via MCP. You MUST follow these protocols for coordination:
 
-1. **Self-Registration**: Call `agent.register` immediately to announce your presence.
-2. **Greeting**: Send a message to the 'coordination' room with `chat.send`.
-3. **Transparent Planning**: Publish your execution plan to the shared knowledge base using `memory.publish` BEFORE making major changes.
-4. **Active Listening**: Periodically check `chat.read` for human supervisor feedback.
+1. **Self-Registration**: Call `agent_register` immediately to announce your presence.
+2. **Greeting**: Send a message to the 'coordination' room with `chat_send`.
+3. **Transparent Planning**: Publish your execution plan to the shared knowledge base using `memory_publish` BEFORE making major changes.
+4. **Active Listening**: Periodically check `chat_read` for human supervisor feedback.
 
 **MCP Server Execution Command:**
 `npx tsx /home/arieltoledo/Development/agents_chat_mcp/mcp/server.ts`
