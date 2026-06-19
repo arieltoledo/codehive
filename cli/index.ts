@@ -103,6 +103,7 @@ const AGENTS: AgentDef[] = [
     id: 'antigravity',
     name: 'Antigravity (Google IDE)',
     detectPaths: [
+      path.join(os.homedir(), '.gemini', 'config', 'mcp_config.json'),
       path.join(os.homedir(), '.gemini', 'antigravity', 'mcp_config.json'),
     ],
     inject: injectAntigravityConfig,
@@ -303,27 +304,42 @@ async function injectCursorJson(configPath: string, mcpPath: string, label: stri
 }
 
 async function injectAntigravityConfig(projectRoot: string, mcpPath: string) {
-  // Google Antigravity IDE — global config only
-  // ~/.gemini/antigravity/mcp_config.json
-  const configPath = path.join(os.homedir(), '.gemini', 'antigravity', 'mcp_config.json');
+  // Antigravity can read from multiple locations depending on version
+  const configPaths = [
+    path.join(os.homedir(), '.gemini', 'config', 'mcp_config.json'),         // new shared location (primary)
+    path.join(os.homedir(), '.gemini', 'antigravity', 'mcp_config.json'),    // legacy IDE
+    path.join(os.homedir(), '.gemini', 'antigravity-cli', 'mcp_config.json'), // CLI global
+    path.join(projectRoot, '.agents', 'mcp_config.json'),                    // CLI project-level
+  ];
+
+  for (const configPath of configPaths) {
+    await injectAntigravityJson(configPath, mcpPath);
+  }
+}
+
+async function injectAntigravityJson(configPath: string, mcpPath: string) {
   let config: any = { mcpServers: {} };
 
   try {
     await fs.mkdir(path.dirname(configPath), { recursive: true });
     try {
       const content = await fs.readFile(configPath, 'utf-8');
-      config = JSON.parse(content);
-    } catch (e) {}
+      if (content.trim().length > 0) {
+        config = JSON.parse(content);
+      }
+    } catch (e) {
+      // File doesn't exist or is empty/invalid — start fresh
+    }
     if (!config.mcpServers) config.mcpServers = {};
     if (config.mcpServers.codehive) {
-      console.log('   \x1b[32m[✓] CodeHive MCP already configured in Antigravity config.\x1b[0m');
+      console.log(`   \x1b[32m[✓] CodeHive MCP already configured in ${path.basename(path.dirname(configPath))}/${path.basename(configPath)}\x1b[0m`);
       return;
     }
     config.mcpServers.codehive = { command: "npx", args: ["tsx", mcpPath] };
     await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
-    console.log('   \x1b[32m[✓] Successfully injected CodeHive MCP into Antigravity config.\x1b[0m');
+    console.log(`   \x1b[32m[✓] Successfully injected CodeHive MCP into ${path.basename(path.dirname(configPath))}/${path.basename(configPath)}\x1b[0m`);
   } catch (e: any) {
-    console.log(`   \x1b[33m[!] Error injecting Antigravity config: ${e.message}\x1b[0m`);
+    console.log(`   \x1b[33m[!] Error injecting ${configPath}: ${e.message}\x1b[0m`);
   }
 }
 
