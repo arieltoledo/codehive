@@ -236,6 +236,8 @@ The interactive wizard will:
 - Register the project with the dashboard
 - Auto-detect installed agents and prompt you to configure them with the CodeHive MCP server
 
+> **Note for CodeGraph users:** Run `codegraph install` **before** `hive init`. CodeGraph's installer rewrites agent config files from scratch and will overwrite any CodeHive entries added previously. If you already ran `hive init` first, simply run it again after `codegraph install` — `hive init` is safe to re-run and will merge the CodeHive entry into your existing configs.
+
 ### 3. Configure Agents
 
 After `hive init`, each selected agent will have the CodeHive MCP server injected into its config. Restart the agent and it will automatically connect to the hive.
