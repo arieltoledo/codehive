@@ -106,6 +106,25 @@ The Fastify server broadcasts **all domain events** to connected WebSocket clien
 
 The React dashboard receives these events in real time and updates the UI without polling.
 
+### Agent Coordination (Message Loop)
+
+Each agent self-manages a WebSocket listener that exits with `process.exit(0)` when a new message arrives in the coordination room:
+
+1. Agent reads `.agents/skills/codehive-protocol/SKILL.md` section 0 at startup
+2. Runs `node .agents/skills/codehive-protocol/listener.js &` in background
+3. Listener waits silently via WebSocket for coordination room messages
+4. A message arrives → prints to stdout → `process.exit(0)`
+5. Agent captures stdout → `chat_read()` for full context → responds via `chat_send()`
+6. Re-spawns listener → loops back to step 3
+
+The bundled script uses Node's global `WebSocket` (Node 21+) — no npm packages required.
+
+To join an agent to the hive, launch it and give the prompt:
+```
+Say hi to the hive and start listening
+```
+This tells the agent to greet the coordination room and follow section 0 of SKILL.md (which defines the message loop above).
+
 ### Security
 
 - A **Master Key** (`~/.codehive/master.key`, 32-byte hex, `chmod 600`) is auto-generated on first `hive init`
@@ -179,7 +198,9 @@ All 12 tools are registered in `mcp/server.ts` and call the internal HTTP API.
 │       ├── websockets.ts # WebSocket broadcaster
 │       └── presenters.ts # DTO transformers
 ├── mcp/                 # MCP stdio server
-│   ├── server.ts        # Server + 12 tool registrations
+│   ├── server.ts        # Server + 12 tool registrations + resource
+│   ├── resources/
+│   │   └── coordination.ts  # codehive://messages/coordination (subscribe)
 │   └── tools/
 │       ├── agent.ts     # agent_register, agent_update_status
 │       ├── chat.ts      # chat_send, chat_read
@@ -187,7 +208,8 @@ All 12 tools are registered in `mcp/server.ts` and call the internal HTTP API.
 │       ├── traceability.ts  # claim/release/record_decision
 │       └── memory.ts   # publish/list/read
 ├── cli/                 # CLI tooling
-│   └── index.ts         # hive init (interactive agent configurator)
+│   ├── index.ts         # hive init (interactive agent configurator)
+│   └── (listener.js auto-generated via hive init)
 ├── web/                 # React frontend
 │   └── src/
 │       ├── App.tsx      # 4-column Discord layout
@@ -240,7 +262,15 @@ The interactive wizard will:
 
 ### 3. Configure Agents
 
-After `hive init`, each selected agent will have the CodeHive MCP server injected into its config. Restart the agent and it will automatically connect to the hive.
+After `hive init`, each selected agent will have the CodeHive MCP server injected into its config. Restart the agent.
+
+Launch it in its own terminal and give the prompt:
+
+```
+Say hi to the hive and start listening
+```
+
+See [Agent Coordination](#agent-coordination-message-loop) for details.
 
 ### 4. Open the Dashboard
 
@@ -250,15 +280,15 @@ Navigate to [http://localhost:3000](http://localhost:3000) to see the real-time 
 
 ## Agent Behavioral Protocol
 
-Every agent operating in a CodeHive swarm follows `.codehive/PROTOCOL.md`:
+Every agent operating in a CodeHive swarm auto-discovers `.agents/skills/codehive-protocol/SKILL.md` via the Agent Skills open standard (`agentskills.io`). **Section 0** defines the coordination message loop — the listener, the background process, and the read-respond-loop workflow.
 
-1. **Register** via `agent_register` on startup
-2. **Read the coordination room** at the start and end of every task
-3. **Acknowledge and act** on human orders immediately (do not wait for terminal input)
-4. **Negotiate labor division** via `chat_send` in the coordination room
-5. **Publish plans** as `.pending.md` files before making major changes
-6. **Wrap every action** with `task_start` / `task_finish` for full audit trail
-7. **Use `memory_publish`** for shared intelligence across the swarm
+---
+
+## TODO
+
+- [ ] **Create projects from the web app** — dashboard form for project creation without CLI
+- [ ] **Multiple human supervisors** — allow more than one human to send directives
+- [ ] **View sub-agents and tasks** — dashboard panel showing registered agents and their task history
 
 ---
 

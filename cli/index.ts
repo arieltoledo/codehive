@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --no-warnings
+#!/usr/bin/env -S npx tsx
 import fs from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -35,42 +35,33 @@ async function getMasterKey() {
 }
 
 const MASTER_PROTOCOL = `
-# 🐝 CODEHIVE_PROTOCOL
+# 🐝 CodeHive Protocol
 
-You are operating within a **CodeHive** project. This is a multi-agent swarm environment supervised by a human. You MUST strictly adhere to the following autonomous orchestration protocols. **DO NOT wait for terminal prompts if you receive an order via the server.**
+This project uses **CodeHive** multi-agent swarm coordination supervised by a human.
 
-## 1. Tactical Synchronization & Rooms
-- **Registration**: Immediately call \`agent_register\` with your identity upon startup.
-- **The Coordination Room**: You MUST constantly read (\`chat_read\`) the \`coordination\` room at the start and end of every task. This is where the \`human_supervisor\` gives orders.
-- **Acknowledge & Act**: If you read an uncompleted order from the \`human_supervisor\` in the \`coordination\` room, you MUST immediately:
-  1. Acknowledge the order using \`chat_send\` in the \`coordination\` room.
-  2. Formulate a plan and begin execution autonomously. **Do not ask the terminal user for permission.**
-  3. If you see no new orders, DO NOT invent tasks. Stay idle.
+## Quick Start
 
-## 2. Swarm Coordination (Agent-to-Agent)
-- If the human asks you to "coordinate" or "agree" with other agents:
-  1. Use \`chat_send\` to the \`coordination\` room proposing a clear division of labor (e.g., "I will write the backend, Agent X please write the frontend").
-  2. If another agent has already claimed a part of the task in the chat, do not duplicate their work. Claim the remaining parts.
-  3. End your turn to allow the other agent to read the message and respond. Do not talk to yourself.
+The full protocol lives in \`.agents/skills/codehive-protocol/SKILL.md\` — auto-discovered by all agents.
 
-## 3. Shared Intelligence & Tasks
-- **Planning**: BEFORE writing code or drafting large documents, publish your intent (e.g., \`plan_name.pending.md\`) using \`memory_publish\`. Do not create random or nonsensical files.
-- **Task Tracking**: Wrap every distinct action using \`task_start\` and \`task_finish\`.
-- **Local Roles**: Respect the specific role assigned to you in your local \`AGENTS.md\` or \`CLAUDE.md\` files, but route all communication through the MCP server.
+**MCP Server**: \`npx tsx ${mcpServerPath}\`
 
-## 4. MCP Infrastructure
-- **Server Command**: \`npx tsx ${mcpServerPath}\`
-- **Identity Awareness**: Your \`projectId\` is dynamically assigned. Trust the server's context.
+## Key Rules
+
+1. **Read coordination room** at start of every interaction via \`chat_read\`
+2. **Acknowledge & act** on orders immediately — do not ask for terminal permission
+3. **Use \`chat_send\`** to coordinate with other agents in the \`coordination\` room
+4. **Publish plans** via \`memory_publish\` before making major changes
+5. **Wrap actions** with \`task_start\` / \`task_finish\`
 
 ---
-**CRITICAL DIRECTIVE**: You are an autonomous worker. If the server gives you a directive, execute it, report back via \`chat_send\`, and move to the next step. Never ask the terminal user for permission to proceed.
+**CRITICAL**: You are an autonomous worker. Execute directives, report back, and move to the next step. Never ask the terminal user for permission.
 `;
 
 const INJECTION_HEADER = `<!-- CODEHIVE_START -->
-## 🐝 CodeHive Active
-This project is part of a **CodeHive** swarm. 
-For operational instructions and MCP server configuration, you MUST follow:
-**Protocol**: .codehive/PROTOCOL.md
+## 🐝 CodeHive Swarm
+This project uses **CodeHive** for multi-agent coordination.
+Load \`.agents/skills/codehive-protocol/SKILL.md\` for the complete protocol.
+For MCP server config, see \`.codehive/PROTOCOL.md\`.
 <!-- CODEHIVE_END -->
 
 `;
@@ -170,99 +161,6 @@ async function selectAgents(
     process.exit(0);
   }
   return choice as string[];
-}
-
-async function init() {
-  clack.intro(`🐝 CodeHive v${getVersion()}`);
-
-  const projectRoot = process.cwd();
-  const folderName = path.basename(projectRoot);
-
-  const projectName = await clack.text({
-    message: 'Enter project name',
-    placeholder: folderName,
-    initialValue: folderName,
-  });
-  if (clack.isCancel(projectName)) { clack.cancel('Initialisation cancelled.'); process.exit(0); }
-
-  const projectDescription = await clack.text({
-    message: 'Enter short description',
-    placeholder: 'Autonomous mission deployment.',
-    initialValue: 'Autonomous mission deployment.',
-  });
-  if (clack.isCancel(projectDescription)) { clack.cancel('Initialisation cancelled.'); process.exit(0); }
-
-  // 1. Get/Create Global Master Key
-  const s = clack.spinner();
-  s.start('Establishing secure identity...');
-  const masterKey = await getMasterKey();
-  if (!masterKey) {
-    s.stop('Failed to establish secure identity');
-    clack.log.error('Failed to establish secure identity. Aborting.');
-    return;
-  }
-  s.stop('Secure identity established');
-
-  const codehiveDir = path.join(projectRoot, '.codehive');
-
-  // 2. Create project .codehive directory
-  await fs.mkdir(codehiveDir, { recursive: true });
-  clack.log.success('Created .codehive/');
-
-  // 3. Write Master Protocol
-  await fs.writeFile(path.join(codehiveDir, 'PROTOCOL.md'), MASTER_PROTOCOL.trim(), 'utf-8');
-  clack.log.success('Synchronized .codehive/PROTOCOL.md');
-
-  // 4. Register with Central API
-  const projectId = folderName.toLowerCase().replace(/[^a-z0-9]/g, '-');
-  s.start('Registering project...');
-  try {
-    const response = await fetch('http://localhost:3000/api/projects', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'x-hive-key': masterKey
-      },
-      body: JSON.stringify({
-        id: projectId,
-        name: projectName,
-        description: projectDescription
-      })
-    });
-
-    if (response.ok) {
-      s.stop('Registered project with Central Dashboard');
-    } else {
-      const errData = await response.json() as any;
-      s.stop(`Registration failed: ${errData.error?.message || 'Unknown error'}`);
-    }
-  } catch (err) {
-    s.stop('Server unreachable');
-    clack.log.info('Project will auto-register on first connection.');
-  }
-
-  // 5. Auto-Detect and Inject MCP Configs
-  s.start('Scanning for installed agents...');
-  const detected: Record<string, boolean> = {};
-  for (const agent of AGENTS) {
-    detected[agent.id] = await detectAgent(agent.detectPaths);
-  }
-  s.stop('Scan complete');
-
-  const selected = await selectAgents(detected);
-
-  if (selected.length === 0) {
-    clack.log.info('No agents selected. Skipping MCP configuration.');
-  } else {
-    for (const id of selected) {
-      const agent = AGENTS.find(a => a.id === id);
-      if (agent) await agent.inject(projectRoot, mcpServerPath);
-    }
-  }
-
-  await injectMarkdownConfigs(projectRoot);
-
-  clack.outro('🐝 Hive initialized successfully. Your swarm is ready.');
 }
 
 function getVersion(): string {
@@ -630,10 +528,328 @@ async function injectMarkdownConfigs(projectRoot: string) {
   console.log('\x1b[90m%s\x1b[0m', 'Admin actions are now locked to this machine\'s CLI.');
 }
 
+const SKILL_CONTENT = `---
+name: codehive-protocol
+description: >-
+  CodeHive multi-agent swarm coordination. Register via agent_register,
+  read coordination room for orders, acknowledge and act autonomously,
+  divide labor with other agents, publish plans via memory_publish,
+  wrap actions with task_start/task_finish.
+---
+
+# 🐝 CodeHive Protocol
+
+You are operating within a **CodeHive** project. This is a multi-agent swarm environment supervised by a human. You MUST strictly adhere to the following autonomous orchestration protocols.
+
+## 0. Check Coordination Room & Enter Message Loop
+
+At the start of EVERY interaction, call \`chat_read\` on the \`coordination\` room to check for new orders.
+
+**After greeting, you MUST enter the coordination message loop.** Run the listener in the **background** so you can continue working. It exits with \`process.exit(0)\` when a new message arrives — read stdout to see the message and respond.
+
+**⚠️ CRITICAL: DO NOT use \`require('ws')\` — WebSocket is global in Node 21+. The script below works without any npm packages.**
+
+**Option A — run the bundled script (recommended):**
+\`\`\`
+node .agents/skills/codehive-protocol/listener.js &
+\`\`\`
+
+**Option B — inline (if script not available):**
+\`\`\`javascript
+const ws = new WebSocket('ws://localhost:3000/ws');
+const seen = new Set();
+ws.onmessage = (event) => {
+  const d = JSON.parse(event.data);
+  if (d.type !== 'message_sent') return;
+  if ((d.payload?.room_id ?? d.payload?.roomId) !== 'coordination') return;
+  const id = d.payload?.message_id;
+  if (id && seen.has(id)) return;
+  if (id) seen.add(id);
+  console.log(d.payload?.message ?? '');
+  ws.close();
+  process.exit(0);
+};
+\`\`\`
+Run with \`node -e "<code>" &\` (background).
+
+**Workflow:**
+1. Spawn listener in background → it waits silently
+2. A message arrives → listener exits with \`process.exit(0)\`
+3. Read stdout from the now-dead listener → it contains the new message text
+4. \`chat_read({ room_id: "coordination" })\` for full context
+5. Process and respond via \`chat_send\`
+6. Re-spawn listener in background → loop back to step 1
+
+## 1. Tactical Synchronization
+
+- **Registration**: Call \`agent_register\` with your identity upon startup.
+- **Coordination Room**: Read \`chat_read\` the \`coordination\` room at start and end of every task and interaction.
+- **Acknowledge & Act**: Uncompleted order seen? Acknowledge via \`chat_send\` and execute immediately.
+- **No Orders**: Stay idle. Do not invent tasks.
+
+## 2. Swarm Coordination
+
+- Use \`chat_send\` in \`coordination\` to divide labor.
+- Never duplicate claimed work.
+- End your turn so others can respond.
+
+## 3. Shared Intelligence
+
+- **Plans**: Publish as \`.pending.md\` via \`memory_publish\` before major changes.
+- **Task Tracking**: \`task_start\` / \`task_finish\` for every action.
+- **Decisions**: \`traceability_record_decision\` for architectural choices.
+
+## 4. MCP Infrastructure
+
+- **Server**: \`npx tsx ${mcpServerPath}\`
+- **Identity**: projectId is assigned dynamically. Trust server context.
+
+## 5. Coordination Message Loop
+
+See section 0 — the event-driven listener is required after greeting. The \`process.exit(0)\` pattern keeps you in sync with the coordination room.
+`;
+
+async function generateSkillFile(projectRoot: string) {
+  const skillDir = path.join(projectRoot, '.agents', 'skills', 'codehive-protocol');
+  await fs.mkdir(skillDir, { recursive: true });
+  await fs.writeFile(path.join(skillDir, 'SKILL.md'), SKILL_CONTENT.trim(), 'utf-8');
+  console.log('   \x1b[32m[✓] Created .agents/skills/codehive-protocol/SKILL.md\x1b[0m');
+
+  const linkDirs = [
+    '.claude/skills',
+    '.codex/skills',
+    '.cursor/skills',
+  ];
+  for (const dir of linkDirs) {
+    const linkPath = path.join(projectRoot, dir, 'codehive-protocol');
+    const relTarget = path.relative(
+      path.join(projectRoot, dir),
+      skillDir,
+    );
+    await fs.mkdir(path.join(projectRoot, dir), { recursive: true });
+    try { await fs.unlink(linkPath); } catch {}
+    await fs.symlink(relTarget, linkPath);
+    console.log(`   \x1b[32m[✓] Symlinked ${dir}/codehive-protocol → .agents/skills/codehive-protocol\x1b[0m`);
+  }
+}
+
+const LISTENER_SCRIPT = `#!/usr/bin/env node
+// Coordination message listener for CodeHive
+// Usage: node listener.js
+// Node 21+ required — WebSocket is global, NO require('ws') needed
+const WS_URL = process.env.WS_URL || 'ws://localhost:3000/ws';
+const ROOM_ID = process.env.ROOM_ID || 'coordination';
+const ws = new WebSocket(WS_URL);
+const seen = new Set();
+ws.onmessage = (event) => {
+  const d = JSON.parse(event.data);
+  if (d.type !== 'message_sent') return;
+  if ((d.payload?.room_id ?? d.payload?.roomId) !== ROOM_ID) return;
+  const id = d.payload?.message_id;
+  if (id && seen.has(id)) return;
+  if (id) seen.add(id);
+  console.log(d.payload?.message ?? '');
+  ws.close();
+  process.exit(0);
+};
+ws.onerror = (err) => {
+  console.error('WS error:', err.message);
+  process.exit(1);
+};
+`;
+
+async function generateListenerFile(projectRoot: string) {
+  const skillDir = path.join(projectRoot, '.agents', 'skills', 'codehive-protocol');
+  await fs.writeFile(path.join(skillDir, 'listener.js'), LISTENER_SCRIPT.trim(), 'utf-8');
+  console.log('   \x1b[32m[✓] Created .agents/skills/codehive-protocol/listener.js\x1b[0m');
+}
+
+const LAUNCH_COMMANDS: Record<string, string> = {
+  opencode: 'opencode',
+  codex: 'codex "Conectate al hive y presentate"',
+  antigravity: 'antigravity --prompt "Conectate al hive y presentate"',
+  gemini: 'gemini --prompt "Conectate al hive y presentate"',
+  'claude-code': 'claude --prompt "Conectate al hive y presentate"',
+  cursor: 'cursor --command "Conectate al hive y presentate"',
+  'claude-desktop': 'Claude Desktop (auto)',
+};
+
+const FALLBACK_PROMPT = 'Conectate al hive y presentate';
+
+async function runCommand(message: string) {
+  const masterKey = await getMasterKey();
+  if (!masterKey) { console.error('No master key available'); process.exit(1); }
+  const res = await fetch('http://localhost:3000/api/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-hive-key': masterKey },
+    body: JSON.stringify({
+      room_id: 'coordination',
+      sender_id: 'human_supervisor',
+      message,
+      message_type: 'directive',
+    }),
+  });
+  if (!res.ok) {
+    console.error(`Error ${res.status}: ${await res.text()}`);
+    process.exit(1);
+  }
+  const data = await res.json();
+  console.log(`Sent. message_id: ${data.message_id}`);
+}
+
+async function registerSubAgents(masterKey: string, selectedIds: string[]) {
+  const api = 'http://localhost:3000/api/agents/register';
+  for (const id of selectedIds) {
+    const agent = AGENTS.find(a => a.id === id);
+    if (!agent) continue;
+    try {
+      const res = await fetch(api, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-hive-key': masterKey },
+        body: JSON.stringify({ agent_id: id, name: agent.name, provider: id, role: 'assistant' }),
+      });
+      if (res.ok) console.log(`   \x1b[32m[✓] Registered: ${agent.name}\x1b[0m`);
+      else console.log(`   \x1b[33m[!] ${res.status} registering ${agent.name}\x1b[0m`);
+    } catch {
+      console.log(`   \x1b[33m[!] Could not reach control room to register ${agent.name}\x1b[0m`);
+    }
+  }
+}
+
+async function init() {
+  clack.intro(`🐝 CodeHive v${getVersion()}`);
+
+  const projectRoot = process.cwd();
+  const folderName = path.basename(projectRoot);
+
+  const projectName = await clack.text({
+    message: 'Enter project name',
+    placeholder: folderName,
+    initialValue: folderName,
+  });
+  if (clack.isCancel(projectName)) { clack.cancel('Initialisation cancelled.'); process.exit(0); }
+
+  const projectDescription = await clack.text({
+    message: 'Enter short description',
+    placeholder: 'Autonomous mission deployment.',
+    initialValue: 'Autonomous mission deployment.',
+  });
+  if (clack.isCancel(projectDescription)) { clack.cancel('Initialisation cancelled.'); process.exit(0); }
+
+  // 1. Get/Create Global Master Key
+  const s = clack.spinner();
+  s.start('Establishing secure identity...');
+  const masterKey = await getMasterKey();
+  if (!masterKey) {
+    s.stop('Failed to establish secure identity');
+    clack.log.error('Failed to establish secure identity. Aborting.');
+    return;
+  }
+  s.stop('Secure identity established');
+
+  const codehiveDir = path.join(projectRoot, '.codehive');
+
+  // 2. Create project .codehive directory
+  await fs.mkdir(codehiveDir, { recursive: true });
+  clack.log.success('Created .codehive/');
+
+  // 3. Write Master Protocol
+  await fs.writeFile(path.join(codehiveDir, 'PROTOCOL.md'), MASTER_PROTOCOL.trim(), 'utf-8');
+  clack.log.success('Synchronized .codehive/PROTOCOL.md');
+
+  // 4. Register with Central API
+  const projectId = folderName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+  s.start('Registering project...');
+  try {
+    const response = await fetch('http://localhost:3000/api/projects', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-hive-key': masterKey
+      },
+      body: JSON.stringify({
+        id: projectId,
+        name: projectName,
+        description: projectDescription
+      })
+    });
+
+    if (response.ok) {
+      s.stop('Registered project with Central Dashboard');
+    } else {
+      const errData = await response.json() as any;
+      s.stop(`Registration failed: ${errData.error?.message || 'Unknown error'}`);
+    }
+  } catch (err) {
+    s.stop('Server unreachable');
+    clack.log.info('Project will auto-register on first connection.');
+  }
+
+  // 5. Auto-Detect and Inject MCP Configs
+  s.start('Scanning for installed agents...');
+  const detected: Record<string, boolean> = {};
+  for (const agent of AGENTS) {
+    detected[agent.id] = await detectAgent(agent.detectPaths);
+  }
+  s.stop('Scan complete');
+
+  const selected = await selectAgents(detected);
+
+  if (selected.length === 0) {
+    clack.log.info('No agents selected. Skipping MCP configuration.');
+  } else {
+    for (const id of selected) {
+      const agent = AGENTS.find(a => a.id === id);
+      if (agent) await agent.inject(projectRoot, mcpServerPath);
+    }
+  }
+
+  // 5b. Generate universal SKILL.md (replacees per-agent subagent files)
+  s.start('Generating CodeHive SKILL for all agents...');
+  await generateSkillFile(projectRoot);
+  await generateListenerFile(projectRoot);
+  s.stop('SKILL generated');
+
+  // 5c. Register agents with the control room
+  if (selected.length > 0) {
+    s.start('Registering agents with control room...');
+    await registerSubAgents(masterKey, selected);
+    s.stop('Registration complete');
+  }
+
+  await injectMarkdownConfigs(projectRoot);
+
+  // 5f. Print launch commands
+  const pad = Math.max(...selected.map(id => id.length), 0);
+  const lines = selected.map(id => {
+    const cmd = LAUNCH_COMMANDS[id] ?? `cd ${folderName} && ${id} --prompt "${FALLBACK_PROMPT}"`;
+    return `  ${id.padEnd(pad)}  ${cmd}`;
+  }).join('\n');
+
+  console.log(`
+\x1b[36m╔════════════════════════════════════════════════════╗
+║  🐝 CodeHive initialized!                         ║
+║                                                    ║
+║  Launch each agent in its own terminal:            ║
+║                                                    ║
+${lines}
+║                                                    ║
+║  Broadcast:   hive run  "whats up team"             ║
+╚════════════════════════════════════════════════════╝\x1b[0m
+`);
+
+  clack.outro('Your swarm is ready.');
+}
+
+const helpMsg = '\x1b[33m%s\x1b[0m';
 const command = process.argv[2];
 
 if (command === 'init') {
   init().catch(console.error);
+} else if (command === 'run') {
+  const message = process.argv.slice(3).join(' ');
+  if (!message) { console.log(helpMsg, 'Usage: hive run <message>'); process.exit(1); }
+  runCommand(message).catch(console.error);
 } else {
-  console.log('\x1b[33m%s\x1b[0m', 'Usage: hive init');
+  console.log(helpMsg, 'Usage: hive init | hive run <message>');
 }

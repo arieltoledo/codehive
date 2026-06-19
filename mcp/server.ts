@@ -21,6 +21,7 @@ import {
   fileClaimSchema,
   fileReleaseSchema
 } from "./tools/traceability.js";
+import { registerCoordinationResource } from "./resources/coordination.js";
 
 function toToolContent(payload: unknown) {
   return {
@@ -267,6 +268,8 @@ export function createMcpServer(services: DomainServices = createDomainServices(
       }
     }
   );
+
+  registerCoordinationResource(server);
 
   return server;
 }

@@ -38,6 +38,16 @@ Thumbs.db
 .codex/
 .gemini/
 
+# Generated skills (recreated via hive init)
+.agents/skills/
+.claude/skills/
+.cursor/skills/
+.codex/skills/
+
+# Project briefs (design docs, not source code)
+Brieff.md
+USAGE.md
+
 # Testing
 coverage/
 
