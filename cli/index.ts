@@ -572,6 +572,8 @@ ws.onmessage = (event) => {
 \`\`\`
 Run with \`node -e "<code>" &\` (background).
 
+**Option C - Create the file in .codehive and run it on backgournd.**
+
 **Workflow:**
 1. Spawn listener in background → it waits silently
 2. A message arrives → listener exits with \`process.exit(0)\`
@@ -804,7 +806,7 @@ async function init() {
     }
   }
 
-  // 5b. Generate universal SKILL.md (replacees per-agent subagent files)
+  // 5b. Generate universal SKILL.md (replaces per-agent subagent files)
   s.start('Generating CodeHive SKILL for all agents...');
   await generateSkillFile(projectRoot);
   await generateListenerFile(projectRoot);

@@ -1,18 +1,25 @@
 {
-  "name": "code-hive",
+  "name": "codehive",
   "version": "0.1.0",
-  "private": true,
+  "description": "Multi-Agent Orchestration Platform — coordinate, observe, and audit swarms of AI coding agents via a shared MCP server",
   "type": "module",
   "bin": {
-    "hive": "./cli/index.ts"
+    "hive": "./cli/bin.mjs"
   },
+  "files": [
+    "cli/",
+    "mcp/",
+    "server/",
+    "prisma/schema.prisma",
+    "README.md"
+  ],
   "scripts": {
-    "dev": "prisma generate && prisma db push && tsx server/index.ts",
-    "dev:mcp": "prisma generate && prisma db push && tsx mcp/server.ts",
-    "build": "prisma generate && tsc -p tsconfig.json",
-    "test": "prisma generate && vitest run --passWithNoTests",
-    "db:push": "prisma db push",
-    "prisma:generate": "prisma generate"
+    "postinstall": "prisma generate",
+    "dev": "prisma db push && tsx server/index.ts",
+    "test": "prisma generate && vitest run --passWithNoTests"
+  },
+  "engines": {
+    "node": ">=21.0.0"
   },
   "dependencies": {
     "@clack/prompts": "^1.5.1",
@@ -22,14 +29,27 @@
     "@modelcontextprotocol/sdk": "^1.13.0",
     "@prisma/client": "^6.10.0",
     "fastify": "^5.3.0",
+    "prisma": "^6.10.0",
     "strip-json-comments": "^5.0.3",
+    "tsx": "^4.19.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
-    "prisma": "^6.10.0",
-    "tsx": "^4.19.0",
     "typescript": "^5.8.3",
     "vitest": "^3.2.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anomalyco/codehive.git"
+  },
+  "keywords": [
+    "mcp",
+    "ai-agents",
+    "orchestration",
+    "swarm",
+    "coordination",
+    "code-agents"
+  ],
+  "license": "MIT"
 }
