@@ -238,21 +238,18 @@ All 12 tools are registered in `mcp/server.ts` and call the internal HTTP API.
 
 ## Getting Started
 
-### 1. Start the Server
+### Global Install (recommended)
 
 ```bash
-npm install
-npm run dev           # Starts Fastify server on http://localhost:3000
-```
+npm install -g codehive
 
-### 2. Initialize a Project
-
-```bash
 cd your-project
-npx tsx cli/index.ts init
+hive init              # Generate SKILL, configs, and agent MCP entries
+hive start &           # Push DB schema + start server on http://localhost:3000
+hive run "Hello team!" # Broadcast a directive to the coordination room
 ```
 
-The interactive wizard will:
+The `hive init` wizard will:
 - Generate your global Master Key (`~/.codehive/master.key`)
 - Create `.codehive/PROTOCOL.md` (swarm behavioral contract)
 - Register the project with the dashboard
@@ -260,7 +257,23 @@ The interactive wizard will:
 
 > **Note for CodeGraph users:** Run `codegraph install` **before** `hive init`. CodeGraph's installer rewrites agent config files from scratch and will overwrite any CodeHive entries added previously. If you already ran `hive init` first, simply run it again after `codegraph install` — `hive init` is safe to re-run and will merge the CodeHive entry into your existing configs.
 
-### 3. Configure Agents
+### Development (from source)
+
+```bash
+git clone https://github.com/anomalyco/codehive.git
+cd codehive
+npm install
+npm run dev           # Starts Fastify server on http://localhost:3000
+```
+
+Then in another terminal:
+
+```bash
+cd your-project
+npx tsx /path/to/codehive/cli/index.ts init
+```
+
+### Configure Agents
 
 After `hive init`, each selected agent will have the CodeHive MCP server injected into its config. Restart the agent.
 
@@ -272,7 +285,7 @@ Say hi to the hive and start listening
 
 See [Agent Coordination](#agent-coordination-message-loop) for details.
 
-### 4. Open the Dashboard
+### Open the Dashboard
 
 Navigate to [http://localhost:3000](http://localhost:3000) to see the real-time control room with all connected agents, messages, tasks, and the shared knowledge base.
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env -S npx tsx
 import fs from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
@@ -843,6 +844,32 @@ ${lines}
   clack.outro('Your swarm is ready.');
 }
 
+async function startServer() {
+  const schemaPath = path.join(rootDir, 'prisma', 'schema.prisma');
+  const serverPath = path.join(rootDir, 'server/index.ts');
+
+  console.log('  \x1b[36m[~] Ensuring database schema...\x1b[0m');
+  const result = spawnSync('npx', ['prisma', 'db', 'push', '--schema', schemaPath, '--skip-generate'], {
+    stdio: 'inherit',
+    env: { ...process.env },
+  });
+  if (result.status !== 0) {
+    console.error('  \x1b[31m[!] Failed to initialize database\x1b[0m');
+    process.exit(1);
+  }
+
+  console.log('  \x1b[36m[~] Starting CodeHive server on http://localhost:3000\x1b[0m');
+
+  const child = spawn('node', ['--import', 'tsx/esm', serverPath], {
+    stdio: 'inherit',
+    env: { ...process.env },
+  });
+
+  child.on('close', (code) => process.exit(code ?? 0));
+  process.on('SIGINT', () => child.kill('SIGINT'));
+  process.on('SIGTERM', () => child.kill('SIGTERM'));
+}
+
 const helpMsg = '\x1b[33m%s\x1b[0m';
 const command = process.argv[2];
 
@@ -852,6 +879,8 @@ if (command === 'init') {
   const message = process.argv.slice(3).join(' ');
   if (!message) { console.log(helpMsg, 'Usage: hive run <message>'); process.exit(1); }
   runCommand(message).catch(console.error);
+} else if (command === 'start') {
+  startServer().catch(console.error);
 } else {
-  console.log(helpMsg, 'Usage: hive init | hive run <message>');
+  console.log(helpMsg, 'Usage: hive init | hive run <message> | hive start');
 }
