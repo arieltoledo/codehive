@@ -2,6 +2,7 @@
 import fs from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
@@ -860,7 +861,8 @@ async function startServer() {
 
   console.log('  \x1b[36m[~] Starting CodeHive server on http://localhost:3000\x1b[0m');
 
-  const child = spawn('node', ['--import', 'tsx/esm', serverPath], {
+  const require = createRequire(import.meta.url);
+  const child = spawn('node', ['--import', require.resolve('tsx/esm'), serverPath], {
     stdio: 'inherit',
     env: { ...process.env },
   });
