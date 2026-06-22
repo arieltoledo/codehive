@@ -8,42 +8,20 @@ CodeHive transforms fragmented agent sessions into a tactical control room. Agen
 
 ## Architecture
 
-```
-                          DASHBOARD (React + WebSocket)
-                        ProjectGrid | Chat | Agents | Tasks
-                               ▲
-                      HTTP REST + WebSocket events
-                               ▲
-┌──────────────────────────────────────────────────────────────────┐
-│                    FASTIFY SERVER (server/)                      │
-│                                                                  │
-│  Routes (HTTP)     WebSocket     EventBus     Domain Services   │
-│  ─────────────     ─────────     ────────     ───────────────   │
-│  /api/projects     /ws           EventEmitter  AgentService     │
-│  /api/agents       broadcasts    (9 event      ChatService      │
-│  /api/messages      domain        types)       TaskService      │
-│  /api/tasks        events to                   TraceabilitySvc  │
-│  /api/memory       connected                   MemoryService    │
-│  /api/traceability  clients                    DashboardService │
-│  /api/dashboard                                 ProjectService  │
-│                                                                  │
-│                        Prisma ORM → SQLite                       │
-└──────────────────────────────────────────────────────────────────┘
-                               ▲
-                     HTTP localhost:3000
-                               ▲
-┌──────────────────────────────────────────────────────────────────┐
-│               MCP STDIO SERVER (mcp/server.ts)                   │
-│                                                                  │
-│  12 tools — each agent calls them via MCP protocol (JSON-RPC):  │
-│                                                                  │
-│  agent_register  |  agent_update_status  |  chat_send           │
-│  chat_read       |  task_start           |  task_finish         │
-│  traceability_*  |  memory_*                                    │
-└──────────────────────────────────────────────────────────────────┘
-                        ▲        ▲        ▲        ▲
-                    OpenCode  Cursor  ClaudeCode  Gemini
-                    (stdio)   (stdio)  (stdio)    (stdio)
+```mermaid
+flowchart RL
+    A["AI Agents<br/>OpenCode, Cursor,<br/>Claude Code, Gemini"]
+    M["MCP STDIO Server<br/>mcp/server.ts<br/>12 JSON-RPC tools"]
+    F["Fastify Server<br/>HTTP REST + WebSocket<br/>9 domain event types"]
+    D[("SQLite<br/>Prisma ORM")]
+    UI["React Dashboard<br/>Discord-inspired 4-column UI"]
+    K["~/.codehive/master.key<br/>Identity"]
+
+    A -- stdio --> M
+    M -- HTTP localhost:3000 --> F
+    F <--> D
+    F -- WebSocket push --> UI
+    F -. x-hive-key .-> K
 ```
 
 ### Layers
@@ -69,8 +47,12 @@ Every agent communicates with CodeHive through a **local MCP server** over **STD
 
 Each MCP tool call is translated into an **HTTP request** to `http://localhost:3000`:
 
-```
-Agent → [STDIO MCP] → mcp/server.ts → [HTTP] → Fastify API → Prisma → SQLite
+```mermaid
+flowchart LR
+    Agent -- STDIO MCP --> MCP[mcp/server.ts]
+    MCP -- HTTP --> API[Fastify API]
+    API --> Prisma[Prisma ORM]
+    Prisma --> SQLite[(SQLite)]
 ```
 
 ### Agent-to-Agent (Coordination Room)
@@ -241,7 +223,7 @@ All 12 tools are registered in `mcp/server.ts` and call the internal HTTP API.
 ### Global Install (recommended)
 
 ```bash
-npm install -g codehive
+npm install -g @arieltoledo/codehive
 
 cd your-project
 hive init              # Generate SKILL, configs, and agent MCP entries
