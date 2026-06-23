@@ -170,6 +170,46 @@ export interface SaveSessionInput {
   metadata?: Record<string, unknown>;
 }
 
+export type AgentType = "codex" | "claude-code" | "opencode" | "antigravity" | "generic";
+
+export interface SubagentFieldDef {
+  name: string;
+  label: string;
+  type: "string" | "textarea" | "select" | "number";
+  required?: boolean;
+  options?: string[];
+}
+
+export interface SubagentSchema {
+  agentType: AgentType;
+  format: "json" | "toml" | "markdown";
+  nativeDir: string;
+  nativeExt: string;
+  fields: SubagentFieldDef[];
+}
+
+export interface SubagentDef {
+  name: string;
+  agentType: AgentType;
+  targetAgentId: string;
+  instructions: string;
+  fields: Record<string, string | number | boolean | undefined>;
+  configWritten: boolean;
+  configPath: string | null;
+  createdAt: string;
+}
+
+export interface SubagentInstanceRecord {
+  id: string;
+  projectId: string;
+  subagentName: string;
+  agentType: AgentType;
+  targetAgentId: string;
+  status: "running" | "completed" | "error";
+  createdAt: Date;
+  finishedAt: Date | null;
+}
+
 export type DomainEvent =
   | { type: "agent_registered"; payload: AgentRecord }
   | { type: "agent_updated"; payload: AgentRecord }
@@ -188,7 +228,23 @@ export type DomainEvent =
   | { type: "goal_updated"; payload: GoalRecord }
   | { type: "goal_completed"; payload: GoalRecord }
   | { type: "goal_paused"; payload: GoalRecord }
-  | { type: "goal_claimed"; payload: GoalRecord };
+  | { type: "goal_claimed"; payload: GoalRecord }
+  | { type: "subagent_created"; payload: SubagentDef }
+  | { type: "subagent_updated"; payload: SubagentDef }
+  | { type: "subagent_deleted"; payload: { name: string } }
+  | { type: "subagent_launched"; payload: { name: string; configPath: string | null; success: boolean } }
+  | { type: "subagent_instance_created"; payload: SubagentInstanceRecord }
+  | { type: "subagent_instance_completed"; payload: SubagentInstanceRecord }
+  | { type: "subagent_instance_error"; payload: SubagentInstanceRecord }
+  | { type: "project_init_step"; payload: ProjectInitStep }
+  | { type: "project_init_done"; payload: { projectId: string; name: string; rootPath: string } }
+  | { type: "project_init_error"; payload: { error: string } };
+
+export interface ProjectInitStep {
+  step: string;
+  status: "running" | "done" | "error";
+  message: string;
+}
 
 export interface GoalRecord {
   goalId: string;

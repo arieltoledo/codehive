@@ -8,6 +8,13 @@ export function useDashboard(initialProjectId: string | null = null) {
   const [tasks, setTasks] = useState<any[]>([]);
   const [memoryFiles, setMemoryFiles] = useState<any[]>([]);
   const [goals, setGoals] = useState<any[]>([]);
+  const [subagents, setSubagents] = useState<any[]>([]);
+  const [subagentInstances, setSubagentInstances] = useState<any[]>([]);
+  const [subagentSchemas, setSubagentSchemas] = useState<any[]>([]);
+  const [initSteps, setInitSteps] = useState<Array<{ step: string; status: string; message: string; projectId?: string }>>([]);
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [activity, setActivity] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
 
   const fetchProjects = () => {
     fetch('/api/projects')
@@ -25,7 +32,14 @@ export function useDashboard(initialProjectId: string | null = null) {
       setMessages([]);
       setTasks([]);
       setMemoryFiles([]);
+      setGoals([]);
+      setSubagents([]);
       return;
+    }
+
+    // Fetch subagent schemas (once)
+    if (subagentSchemas.length === 0) {
+      fetch('/api/subagents/schemas').then(r => r.json()).then(d => setSubagentSchemas(d || []));
     }
 
     // Initial Snapshot for selected project
@@ -49,6 +63,26 @@ export function useDashboard(initialProjectId: string | null = null) {
     fetch(`/api/projects/${projectId}/memory`)
       .then(res => res.json())
       .then(data => setMemoryFiles(data.files || []));
+
+    // Fetch Subagents
+    fetch('/api/subagents')
+      .then(res => res.json())
+      .then(data => setSubagents(data || []))
+      .catch(() => {});
+
+    // Fetch Subagent Instances (running ones for sidebar)
+    fetch('/api/subagents/instances?status=running')
+      .then(res => res.json())
+      .then(data => setSubagentInstances(data || []))
+      .catch(() => {});
+
+    // Fetch Analytics
+    fetch(`/api/projects/${projectId}/analytics`)
+      .then(r => r.json()).then(d => setAnalytics(d)).catch(() => {});
+
+    // Fetch Activity
+    fetch(`/api/projects/${projectId}/activity`)
+      .then(r => r.json()).then(d => setActivity(d)).catch(() => {});
 
     // WebSocket Connection
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -107,9 +141,82 @@ export function useDashboard(initialProjectId: string | null = null) {
         case 'goal_paused':
           setGoals(prev => prev.map((g: any) => g.goalId === payload.goalId ? payload : g));
           break;
+        case 'subagent_created':
+        case 'subagent_updated':
+          setSubagents(prev => {
+            const idx = prev.findIndex((s: any) => s.name === payload.name);
+            if (idx > -1) { const n = [...prev]; n[idx] = payload; return n; }
+            return [payload, ...prev];
+          });
+          break;
+        case 'subagent_deleted':
+          setSubagents(prev => prev.filter((s: any) => s.name !== payload.name));
+          break;
+        case 'subagent_instance_created':
+          setSubagentInstances(prev => [payload, ...prev]);
+          break;
+        case 'subagent_instance_completed':
+        case 'subagent_instance_error':
+          setSubagentInstances(prev => prev.filter((s: any) => s.id !== payload.id));
+          break;
+        case 'project_init_step':
+          setInitSteps(prev => {
+            const existing = prev.findIndex(s => s.step === payload.step);
+            if (existing > -1) {
+              const next = [...prev];
+              next[existing] = payload;
+              return next;
+            }
+            return [...prev, payload];
+          });
+          break;
+        case 'project_init_done':
+          setInitSteps(prev => [...prev, { step: 'complete', status: 'done', message: 'Project ready!', projectId: payload.projectId }]);
+          fetchProjects();
+          break;
+        case 'project_init_error':
+          setInitSteps(prev => [...prev, { step: 'error', status: 'error', message: payload.error }]);
+          break;
+      }
+
+      // Capture notifications from notable events
+      const notif = getNotification(type, payload);
+      if (notif) {
+        setNotifications(prev => [notif, ...prev].slice(0, 50));
       }
     };
-    return () => ws.close();
+
+    function getNotification(type: string, payload: any): any | null {
+      switch (type) {
+        case 'goal_completed':
+          return { id: payload.goalId, type, message: `Goal completed: ${payload.title}`, agentId: payload.agentId, timestamp: new Date().toISOString(), read: false };
+        case 'goal_paused':
+          return { id: payload.goalId, type, message: `Goal paused: ${payload.title}`, agentId: payload.agentId, timestamp: new Date().toISOString(), read: false };
+        case 'goal_claimed':
+          return { id: payload.goalId, type, message: `Goal claimed: ${payload.title}`, agentId: payload.agentId, timestamp: new Date().toISOString(), read: false };
+        case 'task_finished':
+          return { id: payload.task_id, type, message: `Task finished: ${payload.title || payload.task_id}`, agentId: payload.assigned_agent_id, timestamp: new Date().toISOString(), read: false };
+        case 'schedule_completed':
+          return { id: payload.scheduleId || payload.schedule_id, type, message: `Schedule completed for ${payload.agentId}`, agentId: payload.agentId, timestamp: new Date().toISOString(), read: false };
+        case 'subagent_launched':
+          return { id: payload.name, type, message: `Subagent launched: ${payload.name}`, agentId: payload.targetAgentId, timestamp: new Date().toISOString(), read: false };
+        case 'subagent_instance_created':
+          return { id: payload.id, type, message: `Subagent running: ${payload.subagent_name}`, agentId: payload.target_agent_id, timestamp: new Date().toISOString(), read: false };
+        case 'subagent_instance_completed':
+          return { id: payload.id, type, message: `Subagent completed: ${payload.subagent_name}`, agentId: payload.target_agent_id, timestamp: new Date().toISOString(), read: false };
+        case 'subagent_instance_error':
+          return { id: payload.id, type, message: `Subagent failed: ${payload.subagent_name}`, agentId: payload.target_agent_id, timestamp: new Date().toISOString(), read: false };
+        case 'project_init_error':
+          return { id: 'init-error', type, message: `Project init error: ${payload.error}`, agentId: 'system', timestamp: new Date().toISOString(), read: false };
+        default:
+          return null;
+      }
+    }
+
+    return () => {
+      ws.close();
+      setInitSteps([]);
+    };
   }, [projectId]);
 
   const sendMessage = async (message: string, roomId: string = 'coordination', messageType: string = 'human') => {
@@ -145,11 +252,107 @@ export function useDashboard(initialProjectId: string | null = null) {
         'Content-Type': 'application/json',
         'x-hive-key': project?.apiKey || ''
       },
-      body: JSON.stringify({ ...data, projectId })
+      body: JSON.stringify({ ...data, project_id: projectId })
     });
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error?.message ?? 'Failed to create goal');
+    }
+    return response.json();
+  };
+
+  const createSubagent = async (data: {
+    name: string;
+    agentType: string;
+    targetAgentId: string;
+    instructions: string;
+    fields?: Record<string, any>;
+  }) => {
+    const response = await fetch('/api/subagents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message ?? 'Failed to create subagent');
+    }
+    return response.json();
+  };
+
+  const updateSubagent = async (name: string, data: {
+    targetAgentId?: string;
+    instructions?: string;
+    fields?: Record<string, any>;
+  }) => {
+    const response = await fetch(`/api/subagents/${encodeURIComponent(name)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message ?? 'Failed to update subagent');
+    }
+    return response.json();
+  };
+
+  const launchSubagent = async (name: string) => {
+    const response = await fetch(`/api/subagents/${encodeURIComponent(name)}/launch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message ?? 'Failed to launch subagent');
+    }
+    return response.json();
+  };
+
+  const deleteSubagent = async (name: string) => {
+    const response = await fetch(`/api/subagents/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message ?? 'Failed to delete subagent');
+    }
+    return response.json();
+  };
+
+  const fetchSubagentInstances = async () => {
+    try {
+      const res = await fetch('/api/subagents/instances?status=running');
+      const data = await res.json();
+      setSubagentInstances(data || []);
+    } catch {}
+  };
+
+  const completeSubagentInstance = async (name: string) => {
+    const response = await fetch(`/api/subagents/${encodeURIComponent(name)}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message ?? 'Failed to complete subagent');
+    }
+    return response.json();
+  };
+
+  const failSubagentInstance = async (name: string) => {
+    const response = await fetch(`/api/subagents/${encodeURIComponent(name)}/fail`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message ?? 'Failed to mark subagent as failed');
     }
     return response.json();
   };
@@ -183,7 +386,6 @@ export function useDashboard(initialProjectId: string | null = null) {
       throw new Error(error.error?.message ?? 'Failed to delete project');
     }
 
-    // Refresh projects list
     fetchProjects();
     return response.json();
   };
@@ -206,6 +408,31 @@ export function useDashboard(initialProjectId: string | null = null) {
     return response.json();
   };
 
+  const clearInitSteps = () => setInitSteps([]);
+
+  const markAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+
+  const unreadCount = notifications.filter((n: any) => !n.read).length;
+
+  const createProject = async (data: { name: string; description?: string; rootPath: string; initGit?: boolean }) => {
+    const response = await fetch('/api/projects/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message ?? 'Failed to create project');
+    }
+    return response.json();
+  };
+
+  const fetchDirListing = async (dirPath: string) => {
+    const response = await fetch(`/api/fs/list?path=${encodeURIComponent(dirPath)}`);
+    if (!response.ok) throw new Error('Failed to list directory');
+    return response.json();
+  };
+
   const createFile = async (filename: string, content: string = '') => {
     const response = await fetch('/api/memory/publish', {
       method: 'POST',
@@ -221,5 +448,14 @@ export function useDashboard(initialProjectId: string | null = null) {
     return response.json();
   };
 
-  return { projects, projectId, setProjectId, agents, messages, tasks, memoryFiles, goals, sendMessage, createGoal, approvePlan, deleteProject, uploadFile, createFile };
+  return {
+    projects, projectId, setProjectId,
+    agents, messages, tasks, memoryFiles, goals,
+    subagents, subagentInstances, subagentSchemas, initSteps, clearInitSteps,
+    sendMessage, createGoal, createSubagent, updateSubagent, launchSubagent, deleteSubagent,
+    fetchSubagentInstances, completeSubagentInstance, failSubagentInstance,
+    createProject, fetchDirListing,
+    approvePlan, deleteProject, uploadFile, createFile,
+    analytics, activity, notifications, unreadCount, markAllRead,
+  };
 }

@@ -180,3 +180,61 @@ export function toGoalDto(g: GoalRecord): GoalDto {
     finishedAt: g.finishedAt,
   };
 }
+
+import type { SubagentDef, SubagentInstanceRecord } from "../domain/types.js";
+
+export interface SubagentDto {
+  name: string;
+  agentType: string;
+  targetAgentId: string;
+  instructions: string;
+  fields: Record<string, string | number | boolean | undefined>;
+  configWritten: boolean;
+  configPath: string | null;
+  createdAt: string;
+}
+
+export function toSubagentDto(def: SubagentDef): SubagentDto {
+  return {
+    name: def.name,
+    agentType: def.agentType,
+    targetAgentId: def.targetAgentId,
+    instructions: def.instructions,
+    fields: def.fields,
+    configWritten: def.configWritten,
+    configPath: def.configPath,
+    createdAt: def.createdAt,
+  };
+}
+
+export interface SubagentSchemaDto {
+  agentType: string;
+  format: string;
+  nativeDir: string;
+  nativeExt: string;
+  fields: Array<{ name: string; label: string; type: string; required?: boolean; options?: string[] }>;
+}
+
+export interface SubagentInstanceDto {
+  id: string;
+  project_id: string;
+  subagent_name: string;
+  agent_type: string;
+  target_agent_id: string;
+  status: string;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export function toSubagentInstanceDto(inst: SubagentInstanceRecord): SubagentInstanceDto {
+  return {
+    id: inst.id,
+    project_id: inst.projectId,
+    subagent_name: inst.subagentName,
+    agent_type: inst.agentType,
+    target_agent_id: inst.targetAgentId,
+    status: inst.status,
+    created_at: inst.createdAt.toISOString(),
+    finished_at: inst.finishedAt?.toISOString() ?? null,
+  };
+}

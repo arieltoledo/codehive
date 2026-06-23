@@ -39,6 +39,7 @@ model Project {
   schedules   Schedule[]
   sessionSnapshots SessionSnapshot[]
   goals       Goal[]
+  subagentInstances SubagentInstance[]
 
   @@map("projects")
 }
@@ -170,4 +171,20 @@ model Goal {
   @@index([agentId, status])
   @@index([projectId, status])
   @@map("goals")
+}
+
+model SubagentInstance {
+  id            String   @id @default(cuid())
+  projectId     String   @default("local") @map("project_id")
+  subagentName  String   @map("subagent_name")
+  agentType     String   @map("agent_type")
+  targetAgentId String   @map("target_agent_id")
+  status        String   @default("running") // running | completed | error
+  createdAt     DateTime @default(now()) @map("created_at")
+  finishedAt    DateTime? @map("finished_at")
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([projectId, status])
+  @@map("subagent_instances")
 }

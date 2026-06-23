@@ -1,5 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import { getTrustedKey } from "./auth.js";
 
@@ -10,7 +13,8 @@ import {
 } from "../config/defaults.js";
 import type { GoalRecord } from "../domain/types.js";
 import type { DomainServices } from "../domain/services.js";
-import { 
+import { initializeProject } from "../utils/project-init.js";
+import {
   toAgentDto, 
   toGoalDto,
   toMessageDto, 
@@ -18,7 +22,9 @@ import {
   toFileClaimDto, 
   toDecisionDto,
   toScheduleDto,
-  toSessionSnapshotDto
+  toSessionSnapshotDto,
+  toSubagentDto,
+  toSubagentInstanceDto
 } from "./presenters.js";
 import { handleWebsocket } from "./websockets.js";
 
@@ -614,6 +620,20 @@ export async function registerRoutes(
   // Legacy snapshot for backward compatibility
   app.get("/api/dashboard/snapshot", async () => services.dashboard.getSnapshot("local"));
 
+  // Analytics
+  app.get("/api/projects/:projectId/analytics", async (request) => {
+    const { projectId } = request.params as any;
+    return services.dashboard.getAnalytics(projectId);
+  });
+
+  // Activity timeline
+  app.get("/api/projects/:projectId/activity", async (request) => {
+    const { projectId } = request.params as any;
+    const query = request.query as any;
+    const limit = parseInt(query.limit) || 50;
+    return services.dashboard.getActivity(projectId, limit);
+  });
+
   // Goal routes
   app.post("/api/goals", async (request, reply) => {
     try {
@@ -725,6 +745,280 @@ export async function registerRoutes(
       return toGoalDto(record);
     } catch (error) {
       return reply.status(400).send({ error: { code: "GOAL_INCREMENT_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  // Subagent routes
+  app.get("/api/subagents", async (request) => {
+    const query = request.query as any;
+    const defs = await services.subagents.list(query.project_root);
+    return defs.map(toSubagentDto);
+  });
+
+  // Subagent instances (must be before :name routes)
+  app.get("/api/subagents/instances", async (request) => {
+    const query = request.query as any;
+    const instances = await services.subagents.listInstances(query.project_root, query.status);
+    return instances.map(toSubagentInstanceDto);
+  });
+
+  app.post("/api/subagents/:name/complete", async (request, reply) => {
+    try {
+      const { name } = request.params as any;
+      const query = request.query as any;
+      const instance = await services.subagents.completeInstance(name, query.project_root);
+      return toSubagentInstanceDto(instance);
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "COMPLETE_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.post("/api/subagents/:name/fail", async (request, reply) => {
+    try {
+      const { name } = request.params as any;
+      const query = request.query as any;
+      const instance = await services.subagents.failInstance(name, query.project_root);
+      return toSubagentInstanceDto(instance);
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "FAIL_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.get("/api/subagents/schemas", async () => {
+    const schemas = services.subagents.getAllSchemas();
+    return Object.entries(schemas).map(([key, schema]) => ({
+      agentType: key,
+      format: schema.format,
+      nativeDir: schema.nativeDir,
+      nativeExt: schema.nativeExt,
+      fields: schema.fields,
+    }));
+  });
+
+  app.get("/api/subagents/schema/:agentType", async (request) => {
+    const { agentType } = request.params as any;
+    const schema = services.subagents.getSchemaForAgentType(agentType);
+    if (!schema) return null;
+    return {
+      agentType: schema.agentType,
+      format: schema.format,
+      nativeDir: schema.nativeDir,
+      nativeExt: schema.nativeExt,
+      fields: schema.fields,
+    };
+  });
+
+  app.get("/api/subagents/:name", async (request, reply) => {
+    const { name } = request.params as any;
+    const query = request.query as any;
+    const def = await services.subagents.get(name, query.project_root);
+    if (!def) return reply.status(404).send({ error: { code: "NOT_FOUND", message: `Subagent "${name}" not found` } });
+    return toSubagentDto(def);
+  });
+
+  app.post("/api/subagents", async (request, reply) => {
+    try {
+      const schema = z.object({
+        name: z.string().min(1),
+        agentType: z.string().min(1),
+        targetAgentId: z.string().min(1),
+        instructions: z.string().min(1),
+        fields: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+        project_root: z.string().optional(),
+      });
+      const parsed = schema.parse(request.body);
+      const def = await services.subagents.create({
+        name: parsed.name,
+        agentType: parsed.agentType as any,
+        targetAgentId: parsed.targetAgentId,
+        instructions: parsed.instructions,
+        fields: (parsed.fields || {}) as any,
+        configWritten: false,
+        configPath: null,
+        createdAt: new Date().toISOString(),
+      }, parsed.project_root);
+      return reply.status(201).send(toSubagentDto(def));
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "SUBCREATE_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.delete("/api/subagents/:name", async (request, reply) => {
+    try {
+      const { name } = request.params as any;
+      const query = request.query as any;
+      await services.subagents.remove(name, query.project_root);
+      return { success: true };
+    } catch (error) {
+      return reply.status(404).send({ error: { code: "NOT_FOUND", message: (error as Error).message } });
+    }
+  });
+
+  app.post("/api/subagents/:name/launch", async (request, reply) => {
+    try {
+      const { name } = request.params as any;
+      const query = request.query as any;
+      const result = await services.subagents.launch(name, query.project_root);
+      return result;
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "LAUNCH_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.patch("/api/subagents/:name", async (request, reply) => {
+    try {
+      const { name } = request.params as any;
+      const query = request.query as any;
+      const schema = z.object({
+        targetAgentId: z.string().min(1).optional(),
+        instructions: z.string().min(1).optional(),
+        fields: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+      });
+      const parsed = schema.parse(request.body);
+      const updated = await services.subagents.update(name, parsed, query.project_root);
+      return toSubagentDto(updated);
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "SUBCREATE_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.post("/api/projects/:projectId/set-root", async (request, reply) => {
+    try {
+      const { projectId } = request.params as any;
+      const schema = z.object({ rootPath: z.string().min(1) });
+      const parsed = schema.parse(request.body);
+      services.subagents.setProjectRoot(parsed.rootPath);
+      return { success: true, rootPath: parsed.rootPath };
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "SET_ROOT_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  // File system browser (safe, scoped)
+  const BLOCKED_PREFIXES = ["/proc", "/sys", "/dev", "/etc", "/boot", "/tmp"];
+
+  function isSafePath(p: string): boolean {
+    const resolved = path.resolve(p);
+    for (const prefix of BLOCKED_PREFIXES) {
+      if (resolved.startsWith(prefix)) return false;
+    }
+    return true;
+  }
+
+  app.get("/api/fs/list", async (request, reply) => {
+    const query = request.query as any;
+    const dirPath = query.path ? path.resolve(query.path) : os.homedir();
+
+    if (!isSafePath(dirPath)) {
+      return reply.status(403).send({ error: { code: "FORBIDDEN", message: "Cannot browse system directories" } });
+    }
+
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      const result = entries
+        .filter(e => e.name.charAt(0) !== "." || query.showHidden === "true")
+        .map(e => ({
+          name: e.name,
+          path: path.join(dirPath, e.name),
+          isDirectory: e.isDirectory(),
+        }))
+        .sort((a, b) => {
+          if (a.isDirectory && !b.isDirectory) return -1;
+          if (!a.isDirectory && b.isDirectory) return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+      return { entries: result, currentPath: dirPath, parentPath: path.dirname(dirPath) };
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "READ_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  // Create project with init
+  app.post("/api/projects/create", async (request, reply) => {
+    try {
+      const schema = z.object({
+        name: z.string().min(1),
+        description: z.string().optional().default(""),
+        rootPath: z.string().min(1),
+        initGit: z.boolean().optional().default(true),
+      });
+      const parsed = schema.parse(request.body);
+      const rootPath = path.resolve(parsed.rootPath);
+
+      // Check if directory already exists and is non-empty
+      try {
+        const existing = await fs.readdir(rootPath);
+        if (existing.length > 0) {
+          // Check if it already has .codehive (already a CodeHive project)
+          try {
+            await fs.access(path.join(rootPath, ".codehive"));
+            return reply.status(400).send({
+              error: { code: "ALREADY_INITIALIZED", message: "This directory already contains a CodeHive project" }
+            });
+          } catch {
+            // Non-empty but not a CodeHive project — allow it
+          }
+        }
+      } catch {
+        // Directory doesn't exist yet — will be created
+      }
+
+      const projectId = parsed.name.toLowerCase().replace(/[^a-z0-9]/g, "-");
+
+      const { events } = services;
+
+      // Kick off init in background
+      initializeProject({
+        name: parsed.name,
+        description: parsed.description,
+        rootPath,
+        initGit: parsed.initGit,
+        callbacks: {
+          onStep: (step, status, message) => {
+            events.emit("project_init_step", { step, status, message, projectId } as any);
+          },
+          getMasterKey: async () => {
+            const { getTrustedKey } = await import("./auth.js");
+            return getTrustedKey();
+          },
+          registerProject: async (pid, pname, pdesc, masterKey) => {
+            try {
+              await services.prisma.project.upsert({
+                where: { id: pid },
+                create: { id: pid, name: pname, description: pdesc, apiKey: masterKey },
+                update: { name: pname, description: pdesc },
+              });
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          registerAgent: async (agentId, agentName, provider, masterKey) => {
+            try {
+              await services.agents.registerAgent({
+                projectId,
+                agentId,
+                name: agentName,
+                provider,
+                role: "assistant",
+              });
+              return true;
+            } catch {
+              return false;
+            }
+          },
+        },
+      }).then((result) => {
+        events.emit("project_init_done", { projectId: result.projectId, name: parsed.name, rootPath } as any);
+      }).catch((err) => {
+        events.emit("project_init_error", { error: (err as Error).message } as any);
+        app.log.error({ err }, "Project init failed");
+      });
+
+      return reply.status(201).send({ projectId, name: parsed.name, rootPath });
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "CREATE_FAILED", message: (error as Error).message } });
     }
   });
 

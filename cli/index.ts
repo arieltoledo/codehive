@@ -522,6 +522,34 @@ async function injectMarkdownConfigs(projectRoot: string) {
     }
   }
 
+  // Write CodeX instructions
+  const codexDir = path.join(projectRoot, '.codex');
+  await fs.mkdir(codexDir, { recursive: true });
+  const codexInstructions = `# CodeHive Project
+
+This project uses **CodeHive** multi-agent swarm coordination.
+
+## MCP Server
+\`\`\`
+npx tsx ${mcpServerPath}
+\`\`\`
+
+## Protocol
+Load .codehive/PROTOCOL.md for swarm coordination rules.
+
+## Key Rules
+1. Read coordination room at start of every interaction via \`chat_read\`
+2. Acknowledge & act on orders immediately
+3. Use \`chat_send\` to coordinate with other agents
+4. Publish plans via \`memory_publish\` before major changes
+5. Wrap actions with \`task_start\` / \`task_finish\`
+
+## Full Protocol
+.agents/skills/codehive-protocol/SKILL.md
+`;
+  await fs.writeFile(path.join(codexDir, 'instructions.md'), codexInstructions.trim(), 'utf-8');
+  console.log('- \x1b[32mCreated .codex/instructions.md\x1b[0m');
+
   // 6. Persistence directory
   const agentsDir = path.join(projectRoot, '.agents/memory');
   await fs.mkdir(agentsDir, { recursive: true });
@@ -778,6 +806,9 @@ async function init() {
   // 3. Write Master Protocol
   await fs.writeFile(path.join(codehiveDir, 'PROTOCOL.md'), MASTER_PROTOCOL.trim(), 'utf-8');
   clack.log.success('Synchronized .codehive/PROTOCOL.md');
+
+  // 3b. Write config.json with project root
+  await fs.writeFile(path.join(codehiveDir, 'config.json'), JSON.stringify({ projectRoot }, null, 2), 'utf-8');
 
   // 4. Register with Central API
   const projectId = folderName.toLowerCase().replace(/[^a-z0-9]/g, '-');

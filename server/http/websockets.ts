@@ -8,7 +8,9 @@ import {
   toMessageDto,
   toTaskDto,
   toFileClaimDto,
-  toDecisionDto
+  toDecisionDto,
+  toSubagentDto,
+  toSubagentInstanceDto
 } from "./presenters.js";
 
 export function handleWebsocket(
@@ -47,6 +49,16 @@ export function handleWebsocket(
     "goal_completed",
     "goal_paused",
     "goal_claimed",
+    "subagent_created",
+    "subagent_updated",
+    "subagent_deleted",
+    "subagent_launched",
+    "subagent_instance_created",
+    "subagent_instance_completed",
+    "subagent_instance_error",
+    "project_init_step",
+    "project_init_done",
+    "project_init_error",
   ];
 
   const handlers = eventTypes.map((type) => {
@@ -67,6 +79,14 @@ export function handleWebsocket(
           dto = toDecisionDto(payload);
         } else if (type.startsWith("goal_")) {
           dto = toGoalDto(payload);
+        } else if (type.startsWith("subagent_")) {
+          if (type === "subagent_deleted") {
+            dto = payload;
+          } else if (type === "subagent_instance_created" || type === "subagent_instance_completed" || type === "subagent_instance_error") {
+            dto = toSubagentInstanceDto(payload);
+          } else {
+            dto = toSubagentDto(payload);
+          }
         }
 
         socket.send(JSON.stringify({ type, payload: dto }));
