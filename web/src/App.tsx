@@ -1,17 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
-import { Users, Send, Book, FileText, X, LayoutGrid, Upload, FilePlus, ChevronDown, ChevronRight, Hash, Bell, Settings, Search, PlusCircle } from 'lucide-react';
+import { Users, Send, Book, FileText, X, LayoutGrid, Upload, FilePlus, ChevronDown, ChevronRight, Hash, Bell, Settings, Search, PlusCircle, Target } from 'lucide-react';
 import { format } from 'date-fns';
 import { useDashboard } from './hooks/useDashboard';
 import { ProjectGrid } from './components/ProjectGrid';
 
 const App = () => {
-  const { projects, projectId, setProjectId, agents, messages, tasks, memoryFiles, sendMessage, approvePlan, deleteProject, uploadFile, createFile } = useDashboard();
+  const { projects, projectId, setProjectId, agents, messages, tasks, memoryFiles, goals, sendMessage, createGoal, approvePlan, deleteProject, uploadFile, createFile } = useDashboard();
   const [inputValue, setInputValue] = useState('');
   const [selectedFile, setSelectedFile] = useState<any>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [isApproving, setIsApproving] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [expandedAgents, setExpandedAgents] = useState<Record<string, boolean>>({});
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [goalForm, setGoalForm] = useState({ agent_id: '', title: '', description: '', stop_condition: '', max_iterations: 10 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -31,8 +33,77 @@ const App = () => {
     e.preventDefault();
     if (!inputValue.trim()) return;
 
+    const text = inputValue.trim();
+
+    if (text === '/goal') {
+      setShowGoalModal(true);
+      setInputValue('');
+      return;
+    }
+
+    if (text === '/goal list') {
+      try {
+        const res = await fetch(`/api/goals?project_id=${projectId}`);
+        const goalsData = await res.json();
+        const lines = goalsData.length === 0
+          ? 'No goals found.'
+          : goalsData.map((g: any) =>
+              `**${g.title}** — ${g.status} (iter: ${g.iterationCount}/${g.maxIterations || '∞'}, agent: ${g.agentId})`
+            ).join('\n');
+        await sendMessage(`📋 **Goal List**\n${lines}`, undefined, 'system');
+      } catch (err) {
+        console.error(err);
+      }
+      setInputValue('');
+      return;
+    }
+
+    const statusMatch = text.match(/^\/goal status\s+(.+)/);
+    if (statusMatch) {
+      try {
+        const res = await fetch(`/api/goals/${statusMatch[1]}`);
+        const g = await res.json();
+        if (!g) {
+          await sendMessage(`❌ Goal \`${statusMatch[1]}\` not found`, undefined, 'system');
+        } else {
+          await sendMessage(
+            `📊 **Goal: ${g.title}**\nStatus: ${g.status}\nAgent: ${g.agentId}\nDescription: ${g.description}\nStop condition: ${g.stopCondition || '—'}\nIterations: ${g.iterationCount}/${g.maxIterations || '∞'}\nProgress: ${g.progress || '—'}\nCreated: ${new Date(g.createdAt).toLocaleString()}`,
+            undefined, 'system'
+          );
+        }
+      } catch (err) {
+        await sendMessage(`❌ Error fetching goal: ${(err as Error).message}`, undefined, 'system');
+      }
+      setInputValue('');
+      return;
+    }
+
+    const completeMatch = text.match(/^\/goal complete\s+(.+)/);
+    if (completeMatch) {
+      try {
+        await fetch(`/api/goals/${completeMatch[1]}/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        await sendMessage(`✅ Goal \`${completeMatch[1]}\` marked as completed`, undefined, 'system');
+      } catch (err) {
+        await sendMessage(`❌ Error: ${(err as Error).message}`, undefined, 'system');
+      }
+      setInputValue('');
+      return;
+    }
+
+    const pauseMatch = text.match(/^\/goal pause\s+(.+)/);
+    if (pauseMatch) {
+      try {
+        await fetch(`/api/goals/${pauseMatch[1]}/pause`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ progress: 'Paused via chat' }) });
+        await sendMessage(`⏸️ Goal \`${pauseMatch[1]}\` paused`, undefined, 'system');
+      } catch (err) {
+        await sendMessage(`❌ Error: ${(err as Error).message}`, undefined, 'system');
+      }
+      setInputValue('');
+      return;
+    }
+
     try {
-      await sendMessage(inputValue);
+      await sendMessage(text);
       setInputValue('');
     } catch (err) {
       console.error(err);
@@ -89,6 +160,19 @@ const App = () => {
       alert('Failed to approve plan');
     } finally {
       setIsApproving(false);
+    }
+  };
+
+  const handleCreateGoal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!goalForm.agent_id || !goalForm.title || !goalForm.description) return;
+    try {
+      await createGoal(goalForm);
+      await sendMessage(`🎯 Goal created: **${goalForm.title}** (assigned to ${goalForm.agent_id})`);
+      setShowGoalModal(false);
+      setGoalForm({ agent_id: '', title: '', description: '', stop_condition: '', max_iterations: 10 });
+    } catch (err) {
+      alert('Failed to create goal');
     }
   };
 
@@ -333,6 +417,33 @@ const App = () => {
                   </div>
                 </div>
 
+                {/* Goals Section */}
+                <div className="flex-none border-b border-white/5">
+                  <div className="p-3 text-[11px] font-bold text-discord-muted uppercase tracking-wider flex items-center bg-black/5">
+                    <Target className="w-3.5 h-3.5 mr-2 text-discord-cyan" /> ACTIVE_GOALS
+                  </div>
+                  <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-3 space-y-2">
+                    {goals.filter((g: any) => g.status === 'in_progress' || g.status === 'paused').length === 0 && (
+                      <div className="text-[10px] text-discord-muted/40 text-center py-4">No active goals</div>
+                    )}
+                    {goals.filter((g: any) => g.status === 'in_progress' || g.status === 'paused').map((goal: any) => (
+                      <div key={goal.goalId} className="bg-discord-dark/50 rounded-lg p-2.5 border border-white/5">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-discord-cyan">{goal.title}</span>
+                          <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${
+                            goal.status === 'in_progress' ? 'bg-discord-green/20 text-discord-green' : 'bg-discord-yellow/20 text-discord-yellow'
+                          }`}>{goal.status === 'in_progress' ? 'ACTIVE' : 'PAUSED'}</span>
+                        </div>
+                        <div className="text-[10px] text-discord-muted truncate">{goal.description}</div>
+                        <div className="flex items-center justify-between mt-1.5 text-[9px] text-discord-muted">
+                          <span>Agent: {goal.agentId}</span>
+                          <span>Iteration: {goal.iterationCount}{goal.maxIterations ? `/${goal.maxIterations}` : ''}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Mission Control - Compact view */}
                 <div className="h-1/3 flex flex-col min-h-0 bg-black/10">
                   <div className="p-3 text-[11px] font-bold text-discord-muted uppercase tracking-wider border-b border-white/5">
@@ -398,6 +509,59 @@ const App = () => {
                     )}
                    </div>
                 </div>
+              </div>
+            )}
+
+            {/* 6. GOAL MODAL */}
+            {showGoalModal && (
+              <div className="absolute inset-0 z-50 bg-discord-black/80 backdrop-blur-sm flex items-center justify-center">
+                <form onSubmit={handleCreateGoal} className="bg-discord-darker rounded-xl border border-white/10 shadow-2xl w-full max-w-lg p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-white flex items-center"><Target className="w-5 h-5 mr-2 text-discord-cyan" /> New Goal</h2>
+                    <button type="button" onClick={() => setShowGoalModal(false)} className="p-1 hover:bg-white/10 rounded"><X className="w-5 h-5" /></button>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-discord-muted uppercase tracking-wider">Agent</label>
+                    <select value={goalForm.agent_id} onChange={e => setGoalForm(f => ({...f, agent_id: e.target.value}))}
+                      className="w-full mt-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-discord-cyan">
+                      <option value="">Select agent...</option>
+                      {agents.filter((a: any) => !a.parent_agent_id).map((a: any) => (
+                        <option key={a.agent_id} value={a.agent_id}>{a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-discord-muted uppercase tracking-wider">Title</label>
+                    <input type="text" value={goalForm.title} onChange={e => setGoalForm(f => ({...f, title: e.target.value}))}
+                      className="w-full mt-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-discord-cyan" />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-discord-muted uppercase tracking-wider">Description</label>
+                    <textarea rows={3} value={goalForm.description} onChange={e => setGoalForm(f => ({...f, description: e.target.value}))}
+                      className="w-full mt-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-discord-cyan resize-none" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[11px] font-bold text-discord-muted uppercase tracking-wider">Stop Condition (optional)</label>
+                      <input type="text" value={goalForm.stop_condition} onChange={e => setGoalForm(f => ({...f, stop_condition: e.target.value}))}
+                        className="w-full mt-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-discord-cyan" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-discord-muted uppercase tracking-wider">Max Iterations</label>
+                      <input type="number" min={1} value={goalForm.max_iterations} onChange={e => setGoalForm(f => ({...f, max_iterations: parseInt(e.target.value) || 10}))}
+                        className="w-full mt-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-discord-cyan" />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end space-x-3 pt-2">
+                    <button type="button" onClick={() => setShowGoalModal(false)} className="px-4 py-2 text-sm text-discord-muted hover:text-white transition-colors">Cancel</button>
+                    <button type="submit" className="px-4 py-2 bg-discord-cyan text-white rounded-lg text-sm font-bold hover:bg-discord-cyan/80 transition-colors">Create Goal</button>
+                  </div>
+                </form>
               </div>
             )}
           </>

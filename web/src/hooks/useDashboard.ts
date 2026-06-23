@@ -7,6 +7,7 @@ export function useDashboard(initialProjectId: string | null = null) {
   const [messages, setMessages] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [memoryFiles, setMemoryFiles] = useState<any[]>([]);
+  const [goals, setGoals] = useState<any[]>([]);
 
   const fetchProjects = () => {
     fetch('/api/projects')
@@ -35,6 +36,7 @@ export function useDashboard(initialProjectId: string | null = null) {
         setAgents(data.agents || []);
         setMessages(data.messages || []);
         setTasks(data.active_tasks || []);
+        setGoals(data.goals || []);
       })
       .catch(err => {
         console.error('Failed to fetch snapshot:', err);
@@ -93,12 +95,24 @@ export function useDashboard(initialProjectId: string | null = null) {
             return [payload, ...prev];
           });
           break;
+        case 'goal_started':
+        case 'goal_updated':
+          setGoals(prev => {
+            const idx = prev.findIndex((g: any) => g.goalId === payload.goalId);
+            if (idx > -1) { const n = [...prev]; n[idx] = payload; return n; }
+            return [payload, ...prev];
+          });
+          break;
+        case 'goal_completed':
+        case 'goal_paused':
+          setGoals(prev => prev.map((g: any) => g.goalId === payload.goalId ? payload : g));
+          break;
       }
     };
     return () => ws.close();
   }, [projectId]);
 
-  const sendMessage = async (message: string, roomId: string = 'coordination') => {
+  const sendMessage = async (message: string, roomId: string = 'coordination', messageType: string = 'human') => {
     const project = projects.find(p => p.id === projectId);
     const response = await fetch('/api/messages', {
       method: 'POST',
@@ -110,7 +124,7 @@ export function useDashboard(initialProjectId: string | null = null) {
         projectId,
         senderId: 'human_supervisor',
         message,
-        messageType: 'human',
+        messageType,
         roomId
       })
     });
@@ -120,6 +134,23 @@ export function useDashboard(initialProjectId: string | null = null) {
       throw new Error(error.error?.message ?? 'Failed to send message');
     }
 
+    return response.json();
+  };
+
+  const createGoal = async (data: { agent_id: string; title: string; description: string; stop_condition?: string; max_iterations?: number }) => {
+    const project = projects.find(p => p.id === projectId);
+    const response = await fetch('/api/goals', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hive-key': project?.apiKey || ''
+      },
+      body: JSON.stringify({ ...data, projectId })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message ?? 'Failed to create goal');
+    }
     return response.json();
   };
 
@@ -190,5 +221,5 @@ export function useDashboard(initialProjectId: string | null = null) {
     return response.json();
   };
 
-  return { projects, projectId, setProjectId, agents, messages, tasks, memoryFiles, sendMessage, approvePlan, deleteProject, uploadFile, createFile };
+  return { projects, projectId, setProjectId, agents, messages, tasks, memoryFiles, goals, sendMessage, createGoal, approvePlan, deleteProject, uploadFile, createFile };
 }
