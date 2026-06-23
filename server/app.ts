@@ -42,6 +42,41 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   await app.register(websocket);
+
+  // Heartbeat — ping all WS clients every 30s to prevent idle disconnects
+  const HEARTBEAT_INTERVAL = 30_000;
+  const heartbeatTimer = setInterval(() => {
+    const wss = (app as any).websocketServer;
+    if (!wss?.clients) return;
+    for (const ws of wss.clients) {
+      if (ws.isAlive === false) {
+        ws.terminate();
+        continue;
+      }
+      ws.isAlive = false;
+      ws.ping();
+    }
+  }, HEARTBEAT_INTERVAL);
+
+  app.addHook('onClose', (_instance, done) => {
+    clearInterval(heartbeatTimer);
+    clearInterval(scheduleCheckTimer);
+    done();
+  });
+
+  // Schedule checker — process due wake-ups every 60s
+  const SCHEDULE_CHECK_INTERVAL = 60_000;
+  const scheduleCheckTimer = setInterval(async () => {
+    try {
+      const due = await services.schedules.processDueSchedules();
+      for (const s of due) {
+        services.events.emit("schedule_completed", s);
+      }
+    } catch (err) {
+      app.log.error({ err }, "Schedule check error");
+    }
+  }, SCHEDULE_CHECK_INTERVAL);
+
   await app.register(multipart);
 
   await app.register(fastifyStatic, {

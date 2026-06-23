@@ -12,5 +12,11 @@ export function ensureDatabaseUrl(): string {
 
 export function createPrismaClient(): PrismaClient {
   ensureDatabaseUrl();
-  return new PrismaClient();
+  const client = new PrismaClient();
+
+  // Enable WAL mode + busy timeout for better concurrent access
+  client.$queryRawUnsafe("PRAGMA journal_mode=WAL").catch(() => {});
+  client.$queryRawUnsafe("PRAGMA busy_timeout=5000").catch(() => {});
+
+  return client;
 }

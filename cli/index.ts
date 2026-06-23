@@ -643,23 +643,41 @@ const LISTENER_SCRIPT = `#!/usr/bin/env node
 // Node 21+ required — WebSocket is global, NO require('ws') needed
 const WS_URL = process.env.WS_URL || 'ws://localhost:3000/ws';
 const ROOM_ID = process.env.ROOM_ID || 'coordination';
-const ws = new WebSocket(WS_URL);
-const seen = new Set();
-ws.onmessage = (event) => {
-  const d = JSON.parse(event.data);
-  if (d.type !== 'message_sent') return;
-  if ((d.payload?.room_id ?? d.payload?.roomId) !== ROOM_ID) return;
-  const id = d.payload?.message_id;
-  if (id && seen.has(id)) return;
-  if (id) seen.add(id);
-  console.log(d.payload?.message ?? '');
-  ws.close();
-  process.exit(0);
-};
-ws.onerror = (err) => {
-  console.error('WS error:', err.message);
-  process.exit(1);
-};
+const MAX_RETRIES = 15;
+const BASE_DELAY = 1000;
+
+function connect(retries = 0) {
+  const ws = new WebSocket(WS_URL);
+  const seen = new Set();
+
+  ws.onmessage = (event) => {
+    const d = JSON.parse(event.data);
+    if (d.type !== 'message_sent') return;
+    if ((d.payload?.room_id ?? d.payload?.roomId) !== ROOM_ID) return;
+    const id = d.payload?.message_id;
+    if (id && seen.has(id)) return;
+    if (id) seen.add(id);
+    console.log(d.payload?.message ?? '');
+    ws.close();
+    process.exit(0);
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+
+  ws.onclose = () => {
+    if (retries < MAX_RETRIES) {
+      const delay = BASE_DELAY * Math.pow(2, retries);
+      setTimeout(() => connect(retries + 1), delay);
+    } else {
+      console.error('WS: max reconnection attempts reached');
+      process.exit(1);
+    }
+  };
+}
+
+connect();
 `;
 
 async function generateListenerFile(projectRoot: string) {
@@ -884,6 +902,29 @@ if (command === 'init') {
   runCommand(message).catch(console.error);
 } else if (command === 'start') {
   startServer().catch(console.error);
+} else if (command === 'schedule') {
+  const agentId = process.argv[3];
+  const wakeupAt = process.argv[4];
+  const commandStr = process.argv.slice(5).join(' ');
+  if (!agentId || !wakeupAt || !commandStr) {
+    console.log(helpMsg, 'Usage: hive schedule <agent_id> <wakeup_at ISO> <command>');
+    process.exit(1);
+  }
+  (async () => {
+    const masterKey = await getMasterKey();
+    if (!masterKey) { console.error('No master key available'); process.exit(1); }
+    const res = await fetch('http://localhost:3000/api/schedules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-hive-key': masterKey },
+      body: JSON.stringify({ agent_id: agentId, wakeup_at: wakeupAt, command: commandStr }),
+    });
+    if (!res.ok) {
+      console.error(`Error ${res.status}: ${await res.text()}`);
+      process.exit(1);
+    }
+    const data = await res.json();
+    console.log(`Schedule created. id: ${data.schedule_id}, wakeup: ${data.wakeup_at}`);
+  })().catch(console.error);
 } else {
-  console.log(helpMsg, 'Usage: hive init | hive run <message> | hive start');
+  console.log(helpMsg, 'Usage: hive init | hive run <message> | hive start | hive schedule <agent_id> <wakeup_at> <command>');
 }

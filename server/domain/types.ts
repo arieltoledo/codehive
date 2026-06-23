@@ -128,6 +128,48 @@ export interface RecordDecisionInput {
   taskId?: string | null;
 }
 
+export interface ScheduleRecord {
+  scheduleId: string;
+  projectId: string;
+  agentId: string;
+  sessionId: string | null;
+  command: string;
+  wakeupAt: Date;
+  message: string | null;
+  status: string;
+  createdAt: Date;
+  executedAt: Date | null;
+}
+
+export interface CreateScheduleInput {
+  projectId?: string;
+  agentId: string;
+  sessionId?: string | null;
+  command: string;
+  wakeupAt: string;
+  message?: string | null;
+}
+
+export interface SessionSnapshotRecord {
+  snapshotId: string;
+  projectId: string;
+  agentId: string;
+  sessionId: string | null;
+  summary: string;
+  lastTaskId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export interface SaveSessionInput {
+  projectId?: string;
+  agentId: string;
+  sessionId?: string | null;
+  summary: string;
+  lastTaskId?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
 export type DomainEvent =
   | { type: "agent_registered"; payload: AgentRecord }
   | { type: "agent_updated"; payload: AgentRecord }
@@ -137,4 +179,49 @@ export type DomainEvent =
   | { type: "file_claimed"; payload: FileClaimRecord }
   | { type: "file_released"; payload: FileClaimRecord }
   | { type: "decision_recorded"; payload: DecisionRecord }
-  | { type: "memory_updated"; payload: any };
+  | { type: "memory_updated"; payload: any }
+  | { type: "schedule_created"; payload: ScheduleRecord }
+  | { type: "schedule_completed"; payload: ScheduleRecord }
+  | { type: "schedule_cancelled"; payload: ScheduleRecord }
+  | { type: "session_saved"; payload: SessionSnapshotRecord }
+  | { type: "goal_started"; payload: GoalRecord }
+  | { type: "goal_updated"; payload: GoalRecord }
+  | { type: "goal_completed"; payload: GoalRecord }
+  | { type: "goal_paused"; payload: GoalRecord }
+  | { type: "goal_claimed"; payload: GoalRecord };
+
+export interface GoalRecord {
+  goalId: string;
+  projectId: string;
+  agentId: string;
+  parentGoalId: string | null;
+  title: string;
+  description: string;
+  stopCondition: string | null;
+  status: string;
+  progress: string | null;
+  lastSummary: string | null;
+  maxIterations: number | null;
+  iterationCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+  finishedAt: Date | null;
+}
+
+export interface StartGoalInput {
+  projectId?: string;
+  agentId: string;
+  parentGoalId?: string | null;
+  title: string;
+  description: string;
+  stopCondition?: string | null;
+  maxIterations?: number | null;
+}
+
+export interface UpdateGoalInput {
+  goalId: string;
+  projectId?: string;
+  status?: string;
+  progress?: string | null;
+  summary?: string | null;
+}

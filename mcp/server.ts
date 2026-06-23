@@ -21,6 +21,27 @@ import {
   fileClaimSchema,
   fileReleaseSchema
 } from "./tools/traceability.js";
+import {
+  createScheduleToolHandlers,
+  scheduleWakeupSchema,
+  scheduleListSchema,
+  scheduleCancelSchema,
+} from "./tools/schedule.js";
+import {
+  createSessionToolHandlers,
+  sessionSaveSchema,
+  sessionRestoreSchema,
+} from "./tools/session.js";
+import {
+  createGoalToolHandlers,
+  goalStartSchema,
+  goalStatusSchema,
+  goalListSchema,
+  goalCompleteSchema,
+  goalClaimSchema,
+  goalPauseSchema,
+  goalIncrementIterationSchema,
+} from "./tools/goal.js";
 import { registerCoordinationResource } from "./resources/coordination.js";
 
 function toToolContent(payload: unknown) {
@@ -72,10 +93,17 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   const taskTools = createTaskToolHandlers(services);
   const traceabilityTools = createTraceabilityToolHandlers(services);
   const memoryTools = createMemoryToolHandlers(services);
+  const scheduleTools = createScheduleToolHandlers(services);
+  const sessionTools = createSessionToolHandlers(services);
+  const goalTools = createGoalToolHandlers(services);
 
   // Detect projectId from current working directory
   const folderName = path.basename(process.cwd());
   const projectId = folderName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+
+  // Auto-provision the project so FK constraints don't fail
+  services.projects.ensure(projectId).catch((err: Error) => console.error("Failed to ensure project:", err));
+  services.projects.ensure("local").catch((err: Error) => console.error("Failed to ensure local project:", err));
 
   server.registerTool(
     "agent_register",
@@ -263,6 +291,198 @@ export function createMcpServer(services: DomainServices = createDomainServices(
     async (input) => {
       try {
         return toToolContent(await memoryTools.read({ ...input, projectId }));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "schedule_wakeup",
+    {
+      title: "Schedule wake-up",
+      description: "Schedule an agent wake-up via cron when token limits reset.",
+      inputSchema: scheduleWakeupSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await scheduleTools.wakeup({ ...input, projectId }));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "schedule_list",
+    {
+      title: "List schedules",
+      description: "List scheduled wake-ups for an agent.",
+      inputSchema: scheduleListSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await scheduleTools.list({ ...input, projectId }));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "schedule_cancel",
+    {
+      title: "Cancel schedule",
+      description: "Cancel a previously scheduled wake-up.",
+      inputSchema: scheduleCancelSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await scheduleTools.cancel({ ...input, projectId }));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "session_save",
+    {
+      title: "Save session snapshot",
+      description: "Save a snapshot of current agent session before going offline.",
+      inputSchema: sessionSaveSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await sessionTools.save({ ...input, projectId }));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "session_restore",
+    {
+      title: "Restore session snapshot",
+      description: "Restore the last session snapshot for an agent.",
+      inputSchema: sessionRestoreSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await sessionTools.restore({ ...input, projectId }));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "goal_start",
+    {
+      title: "Start a goal",
+      description: "Start a new verifiable goal for an agent.",
+      inputSchema: goalStartSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await goalTools.start({ ...input, projectId }));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "goal_status",
+    {
+      title: "Get goal status",
+      description: "Get the current status of a goal.",
+      inputSchema: goalStatusSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await goalTools.status(input));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "goal_list",
+    {
+      title: "List goals",
+      description: "List goals, optionally filtered by agent or status.",
+      inputSchema: goalListSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await goalTools.list({ ...input, projectId }));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "goal_complete",
+    {
+      title: "Complete a goal",
+      description: "Mark a goal as completed with optional summary.",
+      inputSchema: goalCompleteSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await goalTools.complete(input));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "goal_claim",
+    {
+      title: "Claim a goal",
+      description: "Re-assign a paused goal to a different agent.",
+      inputSchema: goalClaimSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await goalTools.claim(input));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+  
+  server.registerTool(
+    "goal_pause",
+    {
+      title: "Pause a goal",
+      description: "Pause a goal with current progress summary.",
+      inputSchema: goalPauseSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await goalTools.pause(input));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "goal_increment_iteration",
+    {
+      title: "Increment goal iteration",
+      description: "Increment the iteration counter for a goal. Auto-pauses if max_iterations reached.",
+      inputSchema: goalIncrementIterationSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await goalTools.incrementIteration(input));
       } catch (error) {
         return toToolError(error);
       }

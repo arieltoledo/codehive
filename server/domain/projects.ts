@@ -11,6 +11,14 @@ export class ProjectService {
     private readonly events?: EventBus
   ) {}
 
+  async ensure(projectId: string): Promise<void> {
+    await this.prisma.project.upsert({
+      where: { id: projectId },
+      update: {},
+      create: { id: projectId, name: projectId },
+    });
+  }
+
   async deleteProject(projectId: string): Promise<void> {
     if (projectId === "local") {
       throw new Error("The 'local' project cannot be deleted.");

@@ -4,6 +4,7 @@ import type { DomainServices } from "../domain/services.js";
 import type { DomainEvent } from "../domain/types.js";
 import {
   toAgentDto,
+  toGoalDto,
   toMessageDto,
   toTaskDto,
   toFileClaimDto,
@@ -36,7 +37,16 @@ export function handleWebsocket(
     "file_claimed",
     "file_released",
     "decision_recorded",
-    "memory_updated"
+    "memory_updated",
+    "schedule_created",
+    "schedule_completed",
+    "schedule_cancelled",
+    "session_saved",
+    "goal_started",
+    "goal_updated",
+    "goal_completed",
+    "goal_paused",
+    "goal_claimed",
   ];
 
   const handlers = eventTypes.map((type) => {
@@ -55,6 +65,8 @@ export function handleWebsocket(
           dto = toFileClaimDto(payload);
         } else if (type === "decision_recorded") {
           dto = toDecisionDto(payload);
+        } else if (type.startsWith("goal_")) {
+          dto = toGoalDto(payload);
         }
 
         socket.send(JSON.stringify({ type, payload: dto }));
@@ -71,6 +83,10 @@ export function handleWebsocket(
       events.off(type, handler);
     });
   });
+
+  // Mark as alive for heartbeat detection
+  socket.isAlive = true;
+  socket.on("pong", () => { socket.isAlive = true; });
 
   socket.on("error", (error: any) => {
     req.log.error(error, "WebSocket error");

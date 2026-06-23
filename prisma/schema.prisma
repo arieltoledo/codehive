@@ -36,6 +36,9 @@ model Project {
   claims      FileClaim[]
   rooms       Room[]
   tasks       Task[]
+  schedules   Schedule[]
+  sessionSnapshots SessionSnapshot[]
+  goals       Goal[]
 
   @@map("projects")
 }
@@ -110,4 +113,61 @@ model Decision {
 
   @@index([agentId, createdAt])
   @@map("decisions")
+}
+
+model Schedule {
+  id         String    @id @default(cuid())
+  projectId  String    @default("local") @map("project_id")
+  agentId    String    @map("agent_id")
+  sessionId  String?   @map("session_id")
+  command    String
+  wakeupAt   DateTime  @map("wakeup_at")
+  message    String?
+  status     String    @default("pending")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  executedAt DateTime? @map("executed_at")
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([status, wakeupAt])
+  @@map("schedules")
+}
+
+model SessionSnapshot {
+  id         String   @id @default(cuid())
+  projectId  String   @default("local") @map("project_id")
+  agentId    String   @map("agent_id")
+  sessionId  String?  @map("session_id")
+  summary    String
+  lastTaskId String?  @map("last_task_id")
+  metadata   String   @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+  @@map("session_snapshots")
+}
+
+model Goal {
+  id             String    @id @default(cuid())
+  projectId      String    @default("local") @map("project_id")
+  agentId        String    @map("agent_id")
+  parentGoalId   String?   @map("parent_goal_id")
+  title          String
+  description    String
+  stopCondition  String?   @map("stop_condition")
+  status         String    @default("in_progress")
+  progress       String?
+  lastSummary    String?   @map("last_summary")
+  maxIterations  Int?      @map("max_iterations")
+  iterationCount Int       @default(0) @map("iteration_count")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  finishedAt     DateTime? @map("finished_at")
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parentGoal     Goal?     @relation("GoalHierarchy", fields: [parentGoalId], references: [id])
+  subGoals       Goal[]    @relation("GoalHierarchy")
+
+  @@index([agentId, status])
+  @@index([projectId, status])
+  @@map("goals")
 }

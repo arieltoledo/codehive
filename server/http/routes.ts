@@ -1,36 +1,24 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import os from 'node:os';
 
-const GLOBAL_CONFIG_DIR = path.join(os.homedir(), '.codehive');
-const MASTER_KEY_PATH = path.join(GLOBAL_CONFIG_DIR, 'master.key');
-
-async function getTrustedKey() {
-  const envKey = process.env.HIVE_API_KEY;
-  if (envKey) return envKey.trim();
-  
-  try {
-    const key = await fs.readFile(MASTER_KEY_PATH, 'utf-8');
-    return key.trim();
-  } catch (e) {
-    return null;
-  }
-}
+import { getTrustedKey } from "./auth.js";
 
 import {
   DEFAULT_MESSAGE_LIMIT,
   DEFAULT_ROOM_ID,
   MAX_MESSAGE_LIMIT
 } from "../config/defaults.js";
+import type { GoalRecord } from "../domain/types.js";
 import type { DomainServices } from "../domain/services.js";
 import { 
   toAgentDto, 
+  toGoalDto,
   toMessageDto, 
   toTaskDto, 
   toFileClaimDto, 
-  toDecisionDto 
+  toDecisionDto,
+  toScheduleDto,
+  toSessionSnapshotDto
 } from "./presenters.js";
 import { handleWebsocket } from "./websockets.js";
 
@@ -525,6 +513,99 @@ export async function registerRoutes(
     }
   });
 
+  // Schedules
+  app.post("/api/schedules", async (request, reply) => {
+    const schema = z.object({
+      projectId: z.string().min(1).optional(),
+      agent_id: z.string().min(1),
+      session_id: z.string().optional(),
+      command: z.string().min(1),
+      wakeup_at: z.string().min(1),
+      message: z.string().optional(),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: { code: "INVALID_BODY", message: parsed.error.message } });
+    }
+    try {
+      const record = await services.schedules.create({
+        projectId: parsed.data.projectId,
+        agentId: parsed.data.agent_id,
+        sessionId: parsed.data.session_id ?? null,
+        command: parsed.data.command,
+        wakeupAt: parsed.data.wakeup_at,
+        message: parsed.data.message ?? null,
+      });
+      const { SchedulerUtil } = await import("../utils/scheduler.js");
+      SchedulerUtil.install({
+        id: record.scheduleId,
+        agentId: record.agentId,
+        command: record.command,
+        wakeupAt: record.wakeupAt,
+      }).catch((err) => app.log.warn({ err }, "Cron install failed"));
+      return toScheduleDto(record);
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "SCHEDULE_CREATE_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.get("/api/schedules", async (request) => {
+    const query = request.query as any;
+    const records = await services.schedules.list({
+      projectId: query.project_id,
+      agentId: query.agent_id,
+      status: query.status,
+    });
+    return records.map(toScheduleDto);
+  });
+
+  app.delete("/api/schedules/:id", async (request, reply) => {
+    const { id } = request.params as any;
+    try {
+      const record = await services.schedules.cancel(id);
+      const { SchedulerUtil } = await import("../utils/scheduler.js");
+      SchedulerUtil.remove(id).catch(() => {});
+      return toScheduleDto(record);
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "SCHEDULE_CANCEL_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  // Sessions
+  app.post("/api/sessions/save", async (request, reply) => {
+    const schema = z.object({
+      projectId: z.string().min(1).optional(),
+      agent_id: z.string().min(1),
+      session_id: z.string().optional(),
+      summary: z.string().min(1),
+      last_task_id: z.string().optional(),
+      metadata: z.record(z.unknown()).optional(),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: { code: "INVALID_BODY", message: parsed.error.message } });
+    }
+    try {
+      const record = await services.sessions.save({
+        projectId: parsed.data.projectId,
+        agentId: parsed.data.agent_id,
+        sessionId: parsed.data.session_id ?? null,
+        summary: parsed.data.summary,
+        lastTaskId: parsed.data.last_task_id ?? null,
+        metadata: parsed.data.metadata,
+      });
+      return toSessionSnapshotDto(record);
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "SESSION_SAVE_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.get("/api/sessions/:agentId/last", async (request) => {
+    const { agentId } = request.params as any;
+    const record = await services.sessions.restore(agentId);
+    return record ? toSessionSnapshotDto(record) : null;
+  });
+
   app.get("/api/projects/:projectId/dashboard/snapshot", async (request) => {
     const { projectId } = request.params as any;
     return services.dashboard.getSnapshot(projectId);
@@ -532,6 +613,120 @@ export async function registerRoutes(
 
   // Legacy snapshot for backward compatibility
   app.get("/api/dashboard/snapshot", async () => services.dashboard.getSnapshot("local"));
+
+  // Goal routes
+  app.post("/api/goals", async (request, reply) => {
+    try {
+      const schema = z.object({
+        project_id: z.string().min(1).optional(),
+        agent_id: z.string().min(1),
+        parent_goal_id: z.string().min(1).nullable().optional(),
+        title: z.string().min(1),
+        description: z.string().min(1),
+        stop_condition: z.string().nullable().optional(),
+        max_iterations: z.number().int().positive().nullable().optional(),
+      });
+      const parsed = schema.parse(request.body);
+      const record = await services.goals.start({
+        projectId: parsed.project_id,
+        agentId: parsed.agent_id,
+        parentGoalId: parsed.parent_goal_id ?? null,
+        title: parsed.title,
+        description: parsed.description,
+        stopCondition: parsed.stop_condition ?? null,
+        maxIterations: parsed.max_iterations ?? null,
+      });
+      return reply.status(201).send(toGoalDto(record));
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "GOAL_START_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.get("/api/goals", async (request) => {
+    const query = request.query as any;
+    const records = await services.goals.list({
+      projectId: query.project_id,
+      agentId: query.agent_id,
+      status: query.status,
+      parentGoalId: query.parent_goal_id ?? undefined,
+    });
+    return records.map(toGoalDto);
+  });
+
+  app.get("/api/goals/:goalId", async (request) => {
+    const { goalId } = request.params as any;
+    const record = await services.goals.get(goalId);
+    return record ? toGoalDto(record) : null;
+  });
+
+  app.patch("/api/goals/:goalId", async (request, reply) => {
+    try {
+      const { goalId } = request.params as any;
+      const schema = z.object({
+        project_id: z.string().min(1).optional(),
+        status: z.string().min(1).optional(),
+        progress: z.string().nullable().optional(),
+        summary: z.string().nullable().optional(),
+      });
+      const parsed = schema.parse(request.body);
+      const record = await services.goals.update({
+        goalId,
+        projectId: parsed.project_id,
+        status: parsed.status,
+        progress: parsed.progress ?? null,
+        summary: parsed.summary ?? null,
+      });
+      return toGoalDto(record);
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "GOAL_UPDATE_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.post("/api/goals/:goalId/claim", async (request, reply) => {
+    try {
+      const { goalId } = request.params as any;
+      const schema = z.object({ agent_id: z.string().min(1) });
+      const parsed = schema.parse(request.body);
+      const record = await services.goals.claim(goalId, parsed.agent_id);
+      return toGoalDto(record);
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "GOAL_CLAIM_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.post("/api/goals/:goalId/complete", async (request, reply) => {
+    try {
+      const { goalId } = request.params as any;
+      const schema = z.object({ summary: z.string().nullable().optional() });
+      const parsed = schema.parse(request.body ?? {});
+      const record = await services.goals.complete(goalId, parsed.summary ?? undefined);
+      return toGoalDto(record);
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "GOAL_COMPLETE_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.post("/api/goals/:goalId/pause", async (request, reply) => {
+    try {
+      const { goalId } = request.params as any;
+      const schema = z.object({ progress: z.string().nullable().optional(), summary: z.string().nullable().optional() });
+      const parsed = schema.parse(request.body ?? {});
+      const record = await services.goals.pause(goalId, parsed.progress ?? undefined, parsed.summary ?? undefined);
+      return toGoalDto(record);
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "GOAL_PAUSE_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.post("/api/goals/:goalId/increment-iteration", async (request, reply) => {
+    try {
+      const { goalId } = request.params as any;
+      const record = await services.goals.incrementIteration(goalId);
+      return toGoalDto(record);
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "GOAL_INCREMENT_FAILED", message: (error as Error).message } });
+    }
+  });
 
   app.get("/ws", { websocket: true }, (connection, req) => {
     app.log.info("New WebSocket connection established");

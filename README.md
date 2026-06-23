@@ -31,8 +31,8 @@ flowchart RL
 | **Agents** | Any MCP-compatible client | Connect via stdio, execute tools |
 | **MCP Server** | `@modelcontextprotocol/sdk` | STDIO transport, proxies to HTTP API |
 | **HTTP API** | Fastify | REST endpoints for all operations |
-| **Domain** | TypeScript services | Business logic (agents, chat, tasks, traceability, memory) |
-| **Persistence** | Prisma + SQLite | Relational storage for agents, messages, tasks, claims, decisions |
+| **Domain** | TypeScript services | Business logic (agents, chat, tasks, traceability, memory, schedules, sessions, goals) |
+| **Persistence** | Prisma + SQLite (WAL mode) | Relational storage for agents, messages, tasks, claims, decisions, schedules, snapshots, goals |
 | **Real-time** | WebSocket | Push domain events to connected dashboards |
 | **Frontend** | React 19 + Tailwind v4 | Discord-inspired 4-column UI |
 | **Identity** | `~/.codehive/master.key` | 32-byte hex key protects admin operations |
@@ -85,6 +85,9 @@ The Fastify server broadcasts **all domain events** to connected WebSocket clien
 - `file_claimed` / `file_released`
 - `decision_recorded`
 - `memory_updated`
+- `schedule_created` / `schedule_completed` / `schedule_cancelled`
+- `session_saved`
+- `goal_started` / `goal_updated` / `goal_completed` / `goal_paused` / `goal_claimed`
 
 The React dashboard receives these events in real time and updates the UI without polling.
 
@@ -101,6 +104,8 @@ Each agent self-manages a WebSocket listener that exits with `process.exit(0)` w
 
 The bundled script uses Node's global `WebSocket` (Node 21+) — no npm packages required.
 
+**Resilience**: The listener automatically reconnects with exponential backoff (1s, 2s, 4s ... up to 15 retries) if the WebSocket drops due to server restart or network issues. The server also sends a heartbeat ping every 30 seconds to prevent idle connection timeouts from proxies and firewalls.
+
 To join an agent to the hive, launch it and give the prompt:
 ```
 Say hi to the hive and start listening
@@ -110,14 +115,15 @@ This tells the agent to greet the coordination room and follow section 0 of SKIL
 ### Security
 
 - A **Master Key** (`~/.codehive/master.key`, 32-byte hex, `chmod 600`) is auto-generated on first `hive init`
-- Project creation/deletion requires the key via `x-hive-key` header
+- Project creation/deletion requires the key via `x-hive-key` header (enforced in `server/http/auth.ts`)
 - Messages from `human_supervisor` require the key — agents cannot impersonate the human
+- Key is read from `HIVE_API_KEY` env var first, falls back to `~/.codehive/master.key`
 
 ---
 
 ## MCP Tools Reference
 
-All 12 tools are registered in `mcp/server.ts` and call the internal HTTP API.
+All 24 tools are registered in `mcp/server.ts` and call the internal HTTP API.
 
 ### Agent Lifecycle
 
@@ -156,6 +162,33 @@ All 12 tools are registered in `mcp/server.ts` and call the internal HTTP API.
 | `memory_list` | List all files in shared memory | *(none — auto-injects projectId)* |
 | `memory_read` | Read a file from shared memory | `filename` |
 
+### Scheduling & Token Limit Recovery
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `schedule_wakeup` | Schedule agent wake-up via cron | `agent_id`, `command`, `wakeup_at`, `session_id?`, `message?` |
+| `schedule_list` | List pending/completed schedules | `agent_id?` |
+| `schedule_cancel` | Cancel a scheduled wake-up | `schedule_id` |
+
+### Session Persistence
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `session_save` | Snapshot current agent state before going offline | `agent_id`, `summary`, `session_id?`, `last_task_id?`, `metadata?` |
+| `session_restore` | Restore the last snapshot for an agent | `agent_id` |
+
+### Goal-Driven Work
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `goal_start` | Start a new verifiable goal | `agent_id`, `title`, `description`, `stop_condition?`, `parent_goal_id?`, `max_iterations?` |
+| `goal_status` | Get current goal status | `goal_id` |
+| `goal_list` | List goals with optional filters | `agent_id?`, `status?`, `parent_goal_id?` |
+| `goal_complete` | Mark goal as completed | `goal_id`, `summary?` |
+| `goal_pause` | Pause a goal for another agent to claim | `goal_id`, `progress?`, `summary?` |
+| `goal_claim` | Re-assign a paused goal to yourself | `goal_id`, `agent_id` |
+| `goal_increment_iteration` | Increment iteration counter; auto-pauses at max_iterations | `goal_id` |
+
 ---
 
 ## Project Structure
@@ -170,7 +203,10 @@ All 12 tools are registered in `mcp/server.ts` and call the internal HTTP API.
 │   │   ├── tasks.ts     # Task lifecycle
 │   │   ├── traceability.ts  # File claims & decisions
 │   │   ├── memory.ts    # Knowledge base (file system)
-│   │   ├── projects.ts  # Project CRUD
+│   │   ├── projects.ts  # Project CRUD + ensure()
+│   │   ├── schedule.ts  # Schedule CRUD + processDueSchedules
+│   │   ├── session.ts   # Session snapshot save/restore
+│   │   ├── goal.ts      # Goal lifecycle + iteration tracking
 │   │   ├── dashboard.ts # Aggregated snapshots
 │   │   ├── events.ts    # EventBus (typed EventEmitter)
 │   │   ├── services.ts  # DI container
@@ -178,9 +214,10 @@ All 12 tools are registered in `mcp/server.ts` and call the internal HTTP API.
 │   └── http/
 │       ├── routes.ts    # All REST endpoints
 │       ├── websockets.ts # WebSocket broadcaster
-│       └── presenters.ts # DTO transformers
+│       ├── presenters.ts # DTO transformers
+│       └── auth.ts      # HIVE_API_KEY / master.key resolver
 ├── mcp/                 # MCP stdio server
-│   ├── server.ts        # Server + 12 tool registrations + resource
+│   ├── server.ts        # Server + 24 tool registrations + resource
 │   ├── resources/
 │   │   └── coordination.ts  # codehive://messages/coordination (subscribe)
 │   └── tools/
@@ -188,7 +225,10 @@ All 12 tools are registered in `mcp/server.ts` and call the internal HTTP API.
 │       ├── chat.ts      # chat_send, chat_read
 │       ├── task.ts      # task_start, task_finish
 │       ├── traceability.ts  # claim/release/record_decision
-│       └── memory.ts   # publish/list/read
+│       ├── memory.ts    # publish/list/read
+│       ├── schedule.ts  # schedule_wakeup/list/cancel
+│       ├── session.ts   # session_save/restore
+│       └── goal.ts      # goal_start/status/list/complete/pause/claim/increment_iteration
 ├── cli/                 # CLI tooling
 │   ├── index.ts         # hive init (interactive agent configurator)
 │   └── (listener.js auto-generated via hive init)
@@ -215,6 +255,9 @@ All 12 tools are registered in `mcp/server.ts` and call the internal HTTP API.
 | `Task` | `id`, `projectId`, `title`, `status`, `assignedAgentId` | Work unit |
 | `FileClaim` | `agentId`, `filePath`, `status` (active/released), `taskId` | File ownership |
 | `Decision` | `agentId`, `decision`, `reason`, `taskId` | Design/architectural decisions |
+| `Schedule` | `agentId`, `command`, `wakeupAt`, `status` | Cron-based wake-up registration |
+| `SessionSnapshot` | `agentId`, `summary`, `sessionId`, `metadata` | State persistence for token-limit recovery |
+| `Goal` | `agentId`, `title`, `description`, `stopCondition`, `status`, `iterationCount`, `maxIterations`, `parentGoalId` | Persistent verifiable objective |
 
 ---
 
@@ -270,6 +313,129 @@ See [Agent Coordination](#agent-coordination-message-loop) for details.
 ### Open the Dashboard
 
 Navigate to [http://localhost:3000](http://localhost:3000) to see the real-time control room with all connected agents, messages, tasks, and the shared knowledge base.
+
+---
+
+## Scheduling & Token Limit Recovery
+
+### The Problem
+Cloud-based coding agents (Claude Code, Gemini, Cursor, etc.) have token or usage limits. When exhausted, the agent process terminates abruptly, losing its in-memory context.
+
+### How CodeHive Solves It
+
+Two new MCP tools let agents gracefully handle token exhaustion:
+
+| Tool | Description |
+|------|-------------|
+| `session_save` | Save a snapshot of current state (summary, session UUID, last task, metadata) before going offline |
+| `session_restore` | Retrieve the last snapshot on wake-up |
+| `schedule_wakeup` | Register a cron wake-up for when limits reset — stores in DB + installs OS-level cron job |
+| `schedule_list` | View pending/completed schedules |
+| `schedule_cancel` | Cancel a scheduled wake-up |
+
+### Flow
+
+```mermaid
+sequenceDiagram
+    AgentA->>MCP: session_save(agent_id, session_id, summary)
+    AgentA->>MCP: schedule_wakeup(agent_id, wakeup_at, command, message)
+    AgentA->>MCP: chat_send("Pausing auth, back at 14:00")
+    Note over AgentA: Token exhausted → AgentA exits
+    
+    AgentB->>MCP: Completes auth task while AgentA is offline
+    AgentB->>MCP: chat_send("Auth completed")
+
+    Note over AgentA: Cron fires → AgentA restarts
+    AgentA->>MCP: agent_register
+    AgentA->>MCP: session_restore(agent_id)
+    AgentA->>MCP: chat_read(coordination)
+    AgentA->>MCP: task_list
+    Note over AgentA: "Auth is done. Taking billing next."
+    AgentA->>MCP: chat_send("Back. Auth completed by AgentB. Taking billing.")
+```
+
+The cron job uses the agent's native launch command (e.g., `claude --resume <session-id> -p "Conectate al hive y presentate"`), so the agent restores both its internal session and reconnects to the hive.
+
+### CLI
+
+```bash
+hive schedule <agent_id> <wakeup_at> <command>
+# Example:
+hive schedule claude-code 2026-06-23T14:00:00 "claude --resume abc-123 -p 'Conectate al hive'"
+```
+
+## Goal-Driven Multi-Agent Coordination
+
+Goals are persistent objectives with verifiable stop conditions that survive token exhaustion and agent switching.
+
+### MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `goal_start` | Start a new goal with title, description, stop condition, and optional parent goal |
+| `goal_status` | Get current status and progress of a goal |
+| `goal_list` | List goals, optionally filtered by agent, status, or parent goal |
+| `goal_complete` | Mark a goal as completed with optional summary |
+| `goal_pause` | Pause a goal with current progress so another agent can claim it |
+| `goal_claim` | Re-assign a paused goal to a different agent |
+| `goal_increment_iteration` | Increment the iteration counter; auto-pauses when `max_iterations` is reached |
+
+### Lifecycle
+
+```mermaid
+sequenceDiagram
+    AgentA->>MCP: goal_start(agent_id, "Implement auth", stop_condition, max_iterations=10)
+    AgentA->>MCP: goal_status(goal_id)
+    Note over AgentA: Working on auth...
+
+    AgentA->>MCP: goal_increment_iteration(goal_id)
+    Note over AgentA: iterationCount: 1
+
+    AgentA->>MCP: session_save(agent_id, "Halfway through login endpoint")
+    AgentA->>MCP: schedule_wakeup(agent_id, ...)
+    Note over AgentA: Token exhausted → AgentA exits
+
+    AgentB->>MCP: goal_list(status="paused")
+    AgentB->>MCP: goal_claim(goal_id, agentB)
+    AgentB->>MCP: goal_status(goal_id)
+    Note over AgentB: "Login endpoint is done. Taking register endpoint."
+
+    AgentB->>MCP: goal_increment_iteration(goal_id)
+    AgentB->>MCP: goal_complete(goal_id, summary="All auth endpoints implemented")
+    Note over AgentB: ✅ Stop condition verified
+```
+
+### Sub-goals
+
+Break down large goals by passing `parent_goal_id`:
+
+```json
+{
+  "tool": "goal_start",
+  "input": {
+    "agent_id": "agent-1",
+    "parent_goal_id": "abc123",
+    "title": "Implement login endpoint",
+    "description": "POST /auth/login with email + password, returns JWT",
+    "stop_condition": "curl POST /auth/login returns 200 with token"
+  }
+}
+```
+
+### Safety
+
+- `max_iterations` — server auto-pauses via `goal_increment_iteration` when count is reached, preventing infinite loops
+- `goal_increment_iteration` increments the counter and auto-pauses the goal before executing the iteration that would exceed `max_iterations`
+- Agents **must verify the stop condition** before calling `goal_complete`
+- Paused goals can be claimed by any agent — no duplicated work
+
+### Auto-provisioning
+
+The MCP server automatically creates the project in the database the first time it connects. The project ID is derived from the working directory name (e.g., `my-project` → project `my-project`). The `local` project is also always ensured. No manual project setup is needed.
+
+### Persistence: WAL Mode
+
+CodeHive enables SQLite **WAL (Write-Ahead Logging)** mode and a **busy timeout** of 5 seconds on every Prisma client connection. This allows concurrent reads during writes and reduces lock contention when multiple MCP processes or the HTTP server access the database simultaneously.
 
 ---
 

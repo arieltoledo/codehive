@@ -88,3 +88,95 @@ export function toDecisionDto(decision: Decision) {
     created_at: decision.createdAt.toISOString()
   };
 }
+
+import type { GoalRecord, ScheduleRecord, SessionSnapshotRecord } from "../domain/types.js";
+
+export interface ScheduleDto {
+  schedule_id: string;
+  project_id: string;
+  agent_id: string;
+  session_id: string | null;
+  command: string;
+  wakeup_at: string;
+  message: string | null;
+  status: string;
+  created_at: string;
+  executed_at: string | null;
+}
+
+export interface SessionSnapshotDto {
+  snapshot_id: string;
+  project_id: string;
+  agent_id: string;
+  session_id: string | null;
+  summary: string;
+  last_task_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export function toScheduleDto(s: ScheduleRecord): ScheduleDto {
+  return {
+    schedule_id: s.scheduleId,
+    project_id: s.projectId,
+    agent_id: s.agentId,
+    session_id: s.sessionId,
+    command: s.command,
+    wakeup_at: s.wakeupAt.toISOString(),
+    message: s.message,
+    status: s.status,
+    created_at: s.createdAt.toISOString(),
+    executed_at: s.executedAt?.toISOString() ?? null,
+  };
+}
+
+export function toSessionSnapshotDto(s: SessionSnapshotRecord): SessionSnapshotDto {
+  return {
+    snapshot_id: s.snapshotId,
+    project_id: s.projectId,
+    agent_id: s.agentId,
+    session_id: s.sessionId,
+    summary: s.summary,
+    last_task_id: s.lastTaskId,
+    metadata: s.metadata,
+    created_at: s.createdAt.toISOString(),
+  };
+}
+
+export interface GoalDto {
+  goalId: string;
+  projectId: string;
+  agentId: string;
+  parentGoalId: string | null;
+  title: string;
+  description: string;
+  stopCondition: string | null;
+  status: string;
+  progress: string | null;
+  lastSummary: string | null;
+  maxIterations: number | null;
+  iterationCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+  finishedAt: Date | null;
+}
+
+export function toGoalDto(g: GoalRecord): GoalDto {
+  return {
+    goalId: g.goalId,
+    projectId: g.projectId,
+    agentId: g.agentId,
+    parentGoalId: g.parentGoalId,
+    title: g.title,
+    description: g.description,
+    stopCondition: g.stopCondition,
+    status: g.status,
+    progress: g.progress,
+    lastSummary: g.lastSummary,
+    maxIterations: g.maxIterations,
+    iterationCount: g.iterationCount,
+    createdAt: g.createdAt,
+    updatedAt: g.updatedAt,
+    finishedAt: g.finishedAt,
+  };
+}
