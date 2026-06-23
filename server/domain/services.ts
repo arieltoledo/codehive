@@ -11,6 +11,7 @@ import { ProjectService } from "./projects.js";
 import { ScheduleService } from "./schedule.js";
 import { SessionService } from "./session.js";
 import { SubagentService } from "./subagents.js";
+import { TemplateService } from "./templates.js";
 import { TaskService } from "./tasks.js";
 import { TraceabilityService } from "./traceability.js";
 
@@ -28,6 +29,7 @@ export interface DomainServices {
   sessions: SessionService;
   goals: GoalService;
   subagents: SubagentService;
+  templates: TemplateService;
 }
 
 export function createDomainServices(prisma: PrismaClient = createPrismaClient()): DomainServices {
@@ -43,6 +45,7 @@ export function createDomainServices(prisma: PrismaClient = createPrismaClient()
   const sessions = new SessionService(prisma, events);
   const goals = new GoalService(prisma, events);
   const subagents = new SubagentService(prisma, events);
+  const templates = new TemplateService(prisma);
 
   return {
     prisma,
@@ -58,5 +61,6 @@ export function createDomainServices(prisma: PrismaClient = createPrismaClient()
     sessions,
     goals,
     subagents,
+    templates,
   };
 }

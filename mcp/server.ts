@@ -42,6 +42,18 @@ import {
   goalPauseSchema,
   goalIncrementIterationSchema,
 } from "./tools/goal.js";
+import {
+  createSubagentToolHandlers,
+  subagentCreateSchema,
+  subagentUpdateSchema,
+  subagentDeleteSchema,
+  subagentGetSchema,
+  subagentLaunchSchema,
+  subagentListInstancesSchema,
+  subagentCompleteSchema,
+  subagentFailSchema,
+  subagentSearchTemplatesSchema,
+} from "./tools/subagent.js";
 import { registerCoordinationResource } from "./resources/coordination.js";
 
 function toToolContent(payload: unknown) {
@@ -96,6 +108,7 @@ export function createMcpServer(services: DomainServices = createDomainServices(
   const scheduleTools = createScheduleToolHandlers(services);
   const sessionTools = createSessionToolHandlers(services);
   const goalTools = createGoalToolHandlers(services);
+  const subagentTools = createSubagentToolHandlers(services);
 
   // Detect projectId from current working directory
   const folderName = path.basename(process.cwd());
@@ -483,6 +496,183 @@ export function createMcpServer(services: DomainServices = createDomainServices(
     async (input) => {
       try {
         return toToolContent(await goalTools.incrementIteration(input));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  // Subagent tools
+  server.registerTool(
+    "subagent_create",
+    {
+      title: "Create subagent definition",
+      description: "Create a new subagent definition stored on disk.",
+      inputSchema: subagentCreateSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await subagentTools.create(input));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "subagent_list",
+    {
+      title: "List subagent definitions",
+      description: "List all subagent definitions from disk.",
+      inputSchema: z.object({}).shape
+    },
+    async () => {
+      try {
+        return toToolContent(await subagentTools.list());
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "subagent_get",
+    {
+      title: "Get subagent definition",
+      description: "Get a single subagent definition by name.",
+      inputSchema: subagentGetSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await subagentTools.get(input));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "subagent_update",
+    {
+      title: "Update subagent definition",
+      description: "Update an existing subagent definition.",
+      inputSchema: subagentUpdateSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await subagentTools.update(input));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "subagent_delete",
+    {
+      title: "Delete subagent definition",
+      description: "Delete a subagent definition by name.",
+      inputSchema: subagentDeleteSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await subagentTools.delete(input));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "subagent_launch",
+    {
+      title: "Launch subagent instance",
+      description: "Create a running instance for a subagent definition.",
+      inputSchema: subagentLaunchSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await subagentTools.launch(input));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "subagent_complete",
+    {
+      title: "Complete subagent instance",
+      description: "Mark a running subagent instance as completed.",
+      inputSchema: subagentCompleteSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await subagentTools.complete(input));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "subagent_fail",
+    {
+      title: "Fail subagent instance",
+      description: "Mark a running subagent instance as failed.",
+      inputSchema: subagentFailSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await subagentTools.fail(input));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "subagent_list_instances",
+    {
+      title: "List subagent instances",
+      description: "List subagent instances, optionally filtered by status.",
+      inputSchema: subagentListInstancesSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await subagentTools.listInstances(input));
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "subagent_get_schemas",
+    {
+      title: "Get subagent schemas",
+      description: "List all available subagent type schemas (Codex, Claude-Code, OpenCode, Antigravity).",
+      inputSchema: z.object({}).shape
+    },
+    async () => {
+      try {
+        return toToolContent(await subagentTools.getSchemas());
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "subagent_search_templates",
+    {
+      title: "Search subagent templates",
+      description: "Search community subagent templates from claude-plugins.dev and other registries.",
+      inputSchema: subagentSearchTemplatesSchema.shape
+    },
+    async (input) => {
+      try {
+        return toToolContent(await subagentTools.searchTemplates(input));
       } catch (error) {
         return toToolError(error);
       }

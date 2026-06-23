@@ -808,6 +808,76 @@ export async function registerRoutes(
     };
   });
 
+  // Templates (DB-backed repo, must be before :name)
+  app.get("/api/subagents/templates/search", async (request) => {
+    const query = request.query as any;
+    const q = (query.q || "").toLowerCase().trim();
+    const all = await services.templates.list();
+    if (!q) return all;
+    return all.filter(
+      (t) =>
+        t.name.toLowerCase().replace(/-/g, " ").includes(q) ||
+        t.name.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q)
+    );
+  });
+
+  app.get("/api/templates", async () => {
+    return services.templates.list();
+  });
+
+  app.get("/api/templates/:id", async (request, reply) => {
+    const { id } = request.params as any;
+    const tmpl = await services.templates.get(id);
+    if (!tmpl) return reply.status(404).send({ error: { code: "NOT_FOUND", message: "Template not found" } });
+    return tmpl;
+  });
+
+  app.post("/api/templates", async (request, reply) => {
+    try {
+      const schema = z.object({
+        name: z.string().min(1),
+        description: z.string().min(1),
+        instructions: z.string().min(1),
+        agentType: z.string().optional(),
+        fields: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+      });
+      const parsed = schema.parse(request.body);
+      const tmpl = await services.templates.create(parsed);
+      return reply.status(201).send(tmpl);
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "TEMPLATE_CREATE_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.patch("/api/templates/:id", async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      const schema = z.object({
+        name: z.string().optional(),
+        description: z.string().optional(),
+        instructions: z.string().optional(),
+        agentType: z.string().optional(),
+        fields: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+      });
+      const parsed = schema.parse(request.body);
+      const tmpl = await services.templates.update(id, parsed);
+      return tmpl;
+    } catch (error) {
+      return reply.status(400).send({ error: { code: "TEMPLATE_UPDATE_FAILED", message: (error as Error).message } });
+    }
+  });
+
+  app.delete("/api/templates/:id", async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      await services.templates.remove(id);
+      return { success: true };
+    } catch (error) {
+      return reply.status(404).send({ error: { code: "NOT_FOUND", message: (error as Error).message } });
+    }
+  });
+
   app.get("/api/subagents/:name", async (request, reply) => {
     const { name } = request.params as any;
     const query = request.query as any;

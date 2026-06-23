@@ -15,6 +15,7 @@ export function useDashboard(initialProjectId: string | null = null) {
   const [analytics, setAnalytics] = useState<any>(null);
   const [activity, setActivity] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<any[]>([]);
 
   const fetchProjects = () => {
     fetch('/api/projects')
@@ -41,6 +42,9 @@ export function useDashboard(initialProjectId: string | null = null) {
     if (subagentSchemas.length === 0) {
       fetch('/api/subagents/schemas').then(r => r.json()).then(d => setSubagentSchemas(d || []));
     }
+
+    // Fetch templates
+    fetch('/api/templates').then(r => r.json()).then(d => setTemplates(Array.isArray(d) ? d : []));
 
     // Initial Snapshot for selected project
     fetch(`/api/projects/${projectId}/dashboard/snapshot`)
@@ -323,6 +327,78 @@ export function useDashboard(initialProjectId: string | null = null) {
     return response.json();
   };
 
+  const fetchTemplates = async () => {
+    try {
+      const res = await fetch('/api/templates');
+      const data = await res.json();
+      setTemplates(Array.isArray(data) ? data : []);
+    } catch {}
+  };
+
+  const searchTemplates = async (q: string) => {
+    try {
+      const res = await fetch(`/api/subagents/templates/search?q=${encodeURIComponent(q)}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch { return []; }
+  };
+
+  const createTemplate = async (data: {
+    name: string;
+    description: string;
+    instructions: string;
+    agentType?: string;
+    fields?: Record<string, any>;
+  }) => {
+    const res = await fetch('/api/templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message ?? 'Failed to create template');
+    }
+    const tmpl = await res.json();
+    setTemplates(prev => [...prev, tmpl]);
+    return tmpl;
+  };
+
+  const updateTemplate = async (id: string, data: {
+    name?: string;
+    description?: string;
+    instructions?: string;
+    agentType?: string;
+    fields?: Record<string, any>;
+  }) => {
+    const res = await fetch(`/api/templates/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message ?? 'Failed to update template');
+    }
+    const tmpl = await res.json();
+    setTemplates(prev => prev.map(t => t.id === id ? tmpl : t));
+    return tmpl;
+  };
+
+  const deleteTemplate = async (id: string) => {
+    const res = await fetch(`/api/templates/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message ?? 'Failed to delete template');
+    }
+    setTemplates(prev => prev.filter(t => t.id !== id));
+  };
+
   const fetchSubagentInstances = async () => {
     try {
       const res = await fetch('/api/subagents/instances?status=running');
@@ -454,6 +530,7 @@ export function useDashboard(initialProjectId: string | null = null) {
     subagents, subagentInstances, subagentSchemas, initSteps, clearInitSteps,
     sendMessage, createGoal, createSubagent, updateSubagent, launchSubagent, deleteSubagent,
     fetchSubagentInstances, completeSubagentInstance, failSubagentInstance,
+    templates, fetchTemplates, searchTemplates, createTemplate, updateTemplate, deleteTemplate,
     createProject, fetchDirListing,
     approvePlan, deleteProject, uploadFile, createFile,
     analytics, activity, notifications, unreadCount, markAllRead,

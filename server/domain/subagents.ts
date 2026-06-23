@@ -21,7 +21,7 @@ const SCHEMAS: Record<string, SubagentSchema> = {
       { name: "name", label: "Name", type: "string", required: true },
       { name: "description", label: "Description", type: "string" },
       { name: "developer_instructions", label: "Developer Instructions", type: "textarea", required: true },
-      { name: "model", label: "Model", type: "select", options: ["sonnet", "opus-4", "haiku", "gpt-4o"] },
+      { name: "model", label: "Model", type: "select", options: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.3-codex-spark"] },
       { name: "model_reasoning_effort", label: "Reasoning Effort", type: "select", options: ["low", "medium", "high"] },
       { name: "sandbox_mode", label: "Sandbox Mode", type: "select", options: ["read-only", "workspace-write", "danger-full-access"] },
       { name: "nickname_candidates", label: "Nickname Candidates", type: "string" },
@@ -37,7 +37,7 @@ const SCHEMAS: Record<string, SubagentSchema> = {
       { name: "name", label: "Name", type: "string", required: true },
       { name: "description", label: "Description", type: "string" },
       { name: "instructions", label: "System Prompt / Instructions", type: "textarea", required: true },
-      { name: "model", label: "Model", type: "select", options: ["sonnet", "opus", "haiku", "inherit"] },
+      { name: "model", label: "Model", type: "select", options: ["sonnet", "opus", "haiku", "claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5", "inherit"] },
       { name: "permission_mode", label: "Permission Mode", type: "select", options: ["default", "restricted", "full", "inherit"] },
       { name: "tools", label: "Tools (comma-separated)", type: "string" },
     ],
@@ -51,7 +51,7 @@ const SCHEMAS: Record<string, SubagentSchema> = {
       { name: "name", label: "Name", type: "string", required: true },
       { name: "description", label: "Description", type: "string" },
       { name: "prompt", label: "Prompt / Instructions", type: "textarea", required: true },
-      { name: "model", label: "Model", type: "string" },
+      { name: "model", label: "Model", type: "select", options: ["opencode/gpt-5.5", "opencode/gpt-5.4", "opencode/gpt-5.4-mini", "opencode/gpt-5.4-nano", "opencode/claude-sonnet-4-6", "opencode/claude-haiku-4-5", "opencode/gemini-3.5-flash", "opencode/gemini-3.1-pro", "other"] },
       { name: "mode", label: "Mode", type: "select", options: ["primary", "subagent"] },
       { name: "permission", label: "Permission", type: "select", options: ["default", "restricted", "full"] },
       { name: "color", label: "Color (hex)", type: "string" },
@@ -67,6 +67,7 @@ const SCHEMAS: Record<string, SubagentSchema> = {
       { name: "name", label: "Name", type: "string", required: true },
       { name: "description", label: "Description", type: "string" },
       { name: "system_instruction", label: "System Instruction", type: "textarea", required: true },
+      { name: "model", label: "Model", type: "select", options: ["gemini-3.5-flash", "gemini-3.1-pro", "gemini-3-flash", "gemini-3-deep-think", "claude-sonnet-4-6", "claude-opus-4-6", "gpt-oss-120b"] },
       { name: "tools", label: "Tools (comma-separated)", type: "string" },
       { name: "base_environment", label: "Base Environment", type: "select", options: ["remote", "existing"] },
     ],
@@ -182,6 +183,133 @@ function toNativeConfig(def: SubagentDef): string | null {
 
   return null;
 }
+
+interface TemplateResult {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  agentType: string;
+  source: string;
+  fields: Record<string, string | number | boolean>;
+}
+
+const COMMUNITY_API_TIMEOUT = 5000;
+
+async function fetchWithTimeout(url: string, timeoutMs = COMMUNITY_API_TIMEOUT): Promise<Response | null> {
+  try {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch {
+    return null;
+  }
+}
+
+async function searchClaudePlugins(q: string): Promise<TemplateResult[]> {
+  try {
+    const res = await fetchWithTimeout(`https://claude-plugins.dev/api/skills?q=${encodeURIComponent(q)}`);
+    if (!res || !res.ok) return [];
+    const data = await res.json() as any;
+    const items = Array.isArray(data) ? data : data.skills ?? data.results ?? [];
+    return items.slice(0, 15).map((item: any, i: number) => ({
+      id: `claude-plugins-${i}`,
+      name: item.name ?? item.title ?? `skill-${i}`,
+      description: item.description ?? item.excerpt ?? "",
+      instructions: item.instructions ?? item.prompt ?? item.content ?? item.description ?? "",
+      agentType: detectAgentTypeSimple(item.platform ?? item.target ?? ""),
+      source: "claude-plugins.dev",
+      fields: {},
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function detectAgentTypeSimple(platform: string): string {
+  const p = platform.toLowerCase();
+  if (p.includes("codex")) return "codex";
+  if (p.includes("claude")) return "claude-code";
+  if (p.includes("open") || p.includes("opencode")) return "opencode";
+  return "generic";
+}
+
+const BUILTIN_TEMPLATES: TemplateResult[] = [
+  {
+    id: "builtin-code-reviewer",
+    name: "Code Reviewer",
+    description: "Reviews pull requests for bugs, style issues, and security vulnerabilities",
+    instructions: "You are a thorough code reviewer. Analyze the provided code diff for bugs, security issues, style violations, and performance problems. Provide specific, actionable feedback with line numbers.",
+    agentType: "codex",
+    source: "builtin",
+    fields: { model: "gpt-5.4", sandbox_mode: "read-only" },
+  },
+  {
+    id: "builtin-doc-writer",
+    name: "Documentation Writer",
+    description: "Generates comprehensive documentation from source code",
+    instructions: "You are a technical documentation writer. Read the provided source code and generate clear, comprehensive documentation including API references, usage examples, and architecture notes.",
+    agentType: "codex",
+    source: "builtin",
+    fields: { model: "gpt-5.4-mini", sandbox_mode: "read-only" },
+  },
+  {
+    id: "builtin-test-generator",
+    name: "Test Generator",
+    description: "Creates unit and integration tests from implementation code",
+    instructions: "You are a test engineering specialist. Write comprehensive unit tests and integration tests for the provided code. Follow the existing test patterns in the project.",
+    agentType: "claude-code",
+    source: "builtin",
+    fields: { model: "claude-sonnet-4-6", permission_mode: "default" },
+  },
+  {
+    id: "builtin-frontend-dev",
+    name: "Frontend Developer",
+    description: "Builds UI components and pages from specifications",
+    instructions: "You are a frontend developer. Implement the requested UI components using React + TypeScript + Tailwind CSS. Match the existing design patterns and ensure responsive layout.",
+    agentType: "opencode",
+    source: "builtin",
+    fields: { model: "opencode/gpt-5.4-mini", mode: "subagent", permission: "default" },
+  },
+  {
+    id: "builtin-qa-engineer",
+    name: "QA Engineer",
+    description: "Runs manual test suites and reports bugs with reproduction steps",
+    instructions: "You are a QA engineer. Execute test cases methodically, document actual vs expected results, and file detailed bug reports with reproduction steps, screenshots, and severity assessment.",
+    agentType: "claude-code",
+    source: "builtin",
+    fields: { model: "claude-haiku-4-5", permission_mode: "default" },
+  },
+  {
+    id: "builtin-security-auditor",
+    name: "Security Auditor",
+    description: "Scans code for OWASP Top 10 vulnerabilities and misconfigurations",
+    instructions: "You are a security auditor. Review the codebase for OWASP Top 10 vulnerabilities, hardcoded secrets, insecure dependencies, and misconfigurations. Prioritize findings by severity.",
+    agentType: "codex",
+    source: "builtin",
+    fields: { model: "gpt-5.5", sandbox_mode: "read-only" },
+  },
+  {
+    id: "builtin-refactoring-engineer",
+    name: "Refactoring Engineer",
+    description: "Safely restructures code while preserving behavior",
+    instructions: "You are a refactoring specialist. Analyze the code for improvement opportunities and apply safe refactoring patterns. Preserve all existing behavior while improving readability, performance, and maintainability.",
+    agentType: "opencode",
+    source: "builtin",
+    fields: { model: "opencode/gpt-5.4", mode: "subagent", permission: "default" },
+  },
+  {
+    id: "builtin-db-specialist",
+    name: "Database Specialist",
+    description: "Designs schemas, writes migrations, and optimizes queries",
+    instructions: "You are a database specialist. Design schemas, write SQL migrations, optimize queries, and suggest indexing strategies. Consider the specific database technology (PostgreSQL, SQLite, etc.) in use.",
+    agentType: "codex",
+    source: "builtin",
+    fields: { model: "gpt-5.4", sandbox_mode: "workspace-write" },
+  },
+];
 
 export class SubagentService {
   private _projectRoot: string | null = null;
@@ -420,6 +548,30 @@ export class SubagentService {
 
     this.events?.emit("subagent_instance_error" as any, record);
     return record;
+  }
+
+  async searchTemplates(q: string): Promise<TemplateResult[]> {
+    const lower = q.toLowerCase().trim();
+    const builtin = BUILTIN_TEMPLATES.filter(
+      (t) =>
+        t.name.toLowerCase().includes(lower) ||
+        t.description.toLowerCase().includes(lower) ||
+        t.instructions.toLowerCase().includes(lower)
+    );
+
+    const [community, _agenstskills] = await Promise.all([
+      searchClaudePlugins(q),
+      Promise.resolve([] as TemplateResult[]),
+    ]);
+
+    const seen = new Set<string>();
+    const all = [...builtin, ...community];
+    return all.filter((t) => {
+      const key = `${t.source}:${t.name}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   async launch(name: string, projectRoot?: string): Promise<{ configWritten: boolean; configPath: string | null; error?: string }> {

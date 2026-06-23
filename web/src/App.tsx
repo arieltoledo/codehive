@@ -5,7 +5,7 @@ import { useDashboard } from './hooks/useDashboard';
 import { ProjectGrid } from './components/ProjectGrid';
 
 const App = () => {
-  const { projects, projectId, setProjectId, agents, messages, memoryFiles, goals, subagents, subagentInstances, subagentSchemas, initSteps, clearInitSteps, sendMessage, createGoal, createSubagent, updateSubagent, launchSubagent, deleteSubagent, completeSubagentInstance, failSubagentInstance, createProject, fetchDirListing, approvePlan, deleteProject, uploadFile, createFile, analytics, activity, notifications, unreadCount, markAllRead } = useDashboard();
+  const { projects, projectId, setProjectId, agents, messages, memoryFiles, goals, subagents, subagentInstances, subagentSchemas, initSteps, clearInitSteps, sendMessage, createGoal, createSubagent, updateSubagent, launchSubagent, deleteSubagent, completeSubagentInstance, failSubagentInstance, createProject, fetchDirListing, approvePlan, deleteProject, uploadFile, createFile, analytics, activity, notifications, unreadCount, markAllRead, templates, fetchTemplates } = useDashboard();
   const [inputValue, setInputValue] = useState('');
   const [selectedFile, setSelectedFile] = useState<any>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
@@ -30,6 +30,20 @@ const App = () => {
   const [subagentForm, setSubagentForm] = useState({ name: '', instructions: '', fields: {} as Record<string, any> });
   const [subagentSchema, setSubagentSchema] = useState<any>(null);
   const [isLaunching, setIsLaunching] = useState(false);
+
+  // Schedule wake-up modal
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleTargetAgent, setScheduleTargetAgent] = useState<any>(null);
+  const [scheduleForm, setScheduleForm] = useState({ wakeupAt: '', command: '' });
+
+  // Agent details modal
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [detailsAgent, setDetailsAgent] = useState<any>(null);
+
+  // Template search
+  const [showTemplateSearch, setShowTemplateSearch] = useState(false);
+  const [templateQuery, setTemplateQuery] = useState('');
+  const [templateResults, setTemplateResults] = useState<any[]>([]);
 
   // Subagent management modal
   const [showSubagentManage, setShowSubagentManage] = useState(false);
@@ -335,25 +349,36 @@ const App = () => {
 
   const handleScheduleWakeup = (agent: any) => {
     closeContextMenu();
-    const wakeupAt = prompt('Schedule wake-up (ISO datetime, e.g. 2026-06-24T10:00:00):');
-    if (!wakeupAt) return;
-    const command = prompt('Command to run on wake-up:', `cd ${window.location.pathname} && ${agent.provider} --prompt "Wake-up call from CodeHive"`);
-    if (!command) return;
-    fetch('/api/schedules', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent_id: agent.agent_id, wakeup_at: wakeupAt, command })
-    }).then(async () => {
-      await sendMessage(`⏰ Scheduled wake-up for **${agent.name}** at ${new Date(wakeupAt).toLocaleString()}`, undefined, 'system');
-    }).catch(err => alert(`Schedule failed: ${err.message}`));
+    setScheduleTargetAgent(agent);
+    setScheduleForm({
+      wakeupAt: '',
+      command: `cd ${window.location.pathname} && ${agent.provider} --prompt "Wake-up call from CodeHive"`,
+    });
+    setShowScheduleModal(true);
   };
 
-  const handleViewDetails = async (agent: any) => {
+  const handleCreateSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scheduleForm.wakeupAt || !scheduleTargetAgent) return;
+    try {
+      const res = await fetch('/api/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id: scheduleTargetAgent.agent_id, wakeup_at: scheduleForm.wakeupAt, command: scheduleForm.command })
+      });
+      if (!res.ok) throw new Error((await res.json()).error?.message || 'Schedule failed');
+      await sendMessage(`⏰ Scheduled wake-up for **${scheduleTargetAgent.name}** at ${new Date(scheduleForm.wakeupAt).toLocaleString()}`, undefined, 'system');
+      setShowScheduleModal(false);
+      setScheduleTargetAgent(null);
+    } catch (err) {
+      alert(`Schedule failed: ${(err as Error).message}`);
+    }
+  };
+
+  const handleViewDetails = (agent: any) => {
     closeContextMenu();
-    await sendMessage(
-      `📋 **Agent: ${agent.name}**\nID: \`${agent.agent_id}\`\nProvider: ${agent.provider}\nRole: ${agent.role}\nStatus: ${agent.status}\nParent: ${agent.parent_agent_id || '—'}`,
-      undefined, 'system'
-    );
+    setDetailsAgent(agent);
+    setShowDetailsModal(true);
   };
 
   // Subagent modal
@@ -379,6 +404,38 @@ const App = () => {
   const handleLaunchExisting = (name: string) => {
     setLaunchConfirmName(name);
     setShowLaunchConfirm(true);
+  };
+
+  // Template search handler (client-side filter)
+  const handleTemplateSearch = (q: string) => {
+    setTemplateQuery(q);
+    if (!q.trim()) {
+      setTemplateResults(templates);
+      return;
+    }
+    const lower = q.toLowerCase().replace(/-/g, ' ');
+    setTemplateResults(
+      templates.filter((t: any) =>
+        t.name.toLowerCase().includes(lower) ||
+        t.description.toLowerCase().includes(lower)
+      )
+    );
+  };
+
+  const handleUseTemplate = (tmpl: any) => {
+    setSubagentForm(f => ({
+      ...f,
+      name: tmpl.name.toLowerCase().replace(/\s+/g, '-'),
+      instructions: tmpl.instructions || '',
+      fields: tmpl.fields || {},
+    }));
+    const schema = subagentSchemas.find((s: any) =>
+      tmpl.agentType === s.agentType || s.agentType?.toLowerCase().includes(tmpl.agentType?.toLowerCase())
+    );
+    if (schema) setSubagentSchema(schema);
+    setShowTemplateSearch(false);
+    setTemplateQuery('');
+    setTemplateResults([]);
   };
 
   const confirmLaunch = async () => {
@@ -949,7 +1006,91 @@ const App = () => {
               </div>
             )}
 
-            {/* 7. SUBAGENT MODAL */}
+            {/* 7. SCHEDULE WAKE-UP MODAL */}
+            {showScheduleModal && (
+              <div className="absolute inset-0 z-50 bg-discord-black/80 backdrop-blur-sm flex items-center justify-center">
+                <form onSubmit={handleCreateSchedule} className="bg-discord-darker rounded-xl border border-white/10 shadow-2xl w-full max-w-md p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-white flex items-center">
+                      <Bell className="w-5 h-5 mr-2 text-discord-yellow" />
+                      Schedule Wake-up: @{scheduleTargetAgent?.name}
+                    </h2>
+                    <button type="button" onClick={() => setShowScheduleModal(false)} className="p-1 hover:bg-white/10 rounded"><X className="w-5 h-5" /></button>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-discord-muted uppercase tracking-wider">Wake-up Time (ISO) *</label>
+                    <input type="text" value={scheduleForm.wakeupAt} onChange={e => setScheduleForm(f => ({...f, wakeupAt: e.target.value}))}
+                      placeholder="2026-06-24T10:00:00"
+                      className="w-full mt-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-discord-yellow" />
+                    <p className="text-[10px] text-discord-muted/50 mt-1">ISO 8601 format. Local timezone will be used.</p>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-discord-muted uppercase tracking-wider">Command</label>
+                    <textarea rows={3} value={scheduleForm.command} onChange={e => setScheduleForm(f => ({...f, command: e.target.value}))}
+                      className="w-full mt-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-discord-yellow resize-none font-mono text-[12px]" />
+                  </div>
+
+                  <div className="flex justify-end space-x-3 pt-2">
+                    <button type="button" onClick={() => setShowScheduleModal(false)} className="px-4 py-2 text-sm text-discord-muted hover:text-white transition-colors">Cancel</button>
+                    <button type="submit" className="px-4 py-2 bg-discord-yellow text-black rounded-lg text-sm font-bold hover:bg-discord-yellow/80 transition-colors">Schedule</button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* 8. AGENT DETAILS MODAL */}
+            {showDetailsModal && detailsAgent && (
+              <div className="absolute inset-0 z-50 bg-discord-black/80 backdrop-blur-sm flex items-center justify-center">
+                <div className="bg-discord-darker rounded-xl border border-white/10 shadow-2xl w-full max-w-md p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-white flex items-center">
+                      <Hash className="w-5 h-5 mr-2 text-discord-muted" />
+                      Agent Details
+                    </h2>
+                    <button type="button" onClick={() => setShowDetailsModal(false)} className="p-1 hover:bg-white/10 rounded"><X className="w-5 h-5" /></button>
+                  </div>
+                  <div className="bg-discord-dark/50 rounded-lg p-4 space-y-3 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-discord-muted">Name</span>
+                      <span className="text-discord-light font-bold">{detailsAgent.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-discord-muted">ID</span>
+                      <span className="text-discord-light font-mono text-xs">{detailsAgent.agent_id}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-discord-muted">Provider</span>
+                      <span className="text-discord-light">{detailsAgent.provider}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-discord-muted">Role</span>
+                      <span className="text-discord-cyan">{detailsAgent.role}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-discord-muted">Status</span>
+                      <span className={`font-bold ${
+                        detailsAgent.status === 'working' ? 'text-discord-green' :
+                        detailsAgent.status === 'error' ? 'text-discord-red' :
+                        'text-discord-muted'
+                      }`}>{detailsAgent.status}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-discord-muted">Parent</span>
+                      <span className="text-discord-light">{detailsAgent.parent_agent_id || '—'}</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <button type="button" onClick={() => setShowDetailsModal(false)}
+                      className="px-4 py-2 bg-discord-cyan text-white rounded-lg text-sm font-bold hover:bg-discord-cyan/80 transition-colors"
+                    >Close</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 9. SUBAGENT MODAL */}
             {showSubagentModal && (
               <div className="absolute inset-0 z-50 bg-discord-black/80 backdrop-blur-sm flex items-center justify-center">
                 <form onSubmit={handleCreateSubagent} className="bg-discord-darker rounded-xl border border-white/10 shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
@@ -1005,15 +1146,82 @@ const App = () => {
                     </div>
                   ))}
 
-                  <div className="flex justify-end space-x-3 pt-2">
-                    <button type="button" onClick={() => setShowSubagentModal(false)} className="px-4 py-2 text-sm text-discord-muted hover:text-white transition-colors">Cancel</button>
-                    <button type="submit" className="px-4 py-2 bg-discord-cyan text-white rounded-lg text-sm font-bold hover:bg-discord-cyan/80 transition-colors">Create Subagent</button>
+                  {/* From Repo button */}
+                  <div className="flex items-center justify-between pt-2">
+                    <button type="button" onClick={() => { if (templates.length === 0) fetchTemplates().then(() => setTemplateResults(templates)); else setTemplateResults(templates); setTemplateQuery(''); setShowTemplateSearch(true); }}
+                      className="px-3 py-1.5 text-[11px] font-bold text-discord-yellow border border-discord-yellow/30 rounded-lg hover:bg-discord-yellow/10 transition-colors flex items-center space-x-1"
+                    >
+                      <Search className="w-3 h-3" />
+                      <span>From Repo</span>
+                    </button>
+                    <div className="flex items-center space-x-3">
+                      <button type="button" onClick={() => setShowSubagentModal(false)} className="px-4 py-2 text-sm text-discord-muted hover:text-white transition-colors">Cancel</button>
+                      <button type="submit" className="px-4 py-2 bg-discord-cyan text-white rounded-lg text-sm font-bold hover:bg-discord-cyan/80 transition-colors">Create Subagent</button>
+                    </div>
                   </div>
                 </form>
               </div>
             )}
 
-            {/* 8. LAUNCH CONFIRMATION MODAL */}
+            {/* 10. TEMPLATE REPO MODAL */}
+            {showTemplateSearch && (
+              <div className="absolute inset-0 z-50 bg-discord-black/80 backdrop-blur-sm flex items-center justify-center">
+                <div className="bg-discord-darker rounded-xl border border-white/10 shadow-2xl w-full max-w-2xl p-6 space-y-4 max-h-[80vh] flex flex-col">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-white flex items-center">
+                      <Search className="w-5 h-5 mr-2 text-discord-yellow" />
+                      Template Repo
+                    </h2>
+                    <button type="button" onClick={() => { setShowTemplateSearch(false); setTemplateQuery(''); }}
+                      className="p-1 hover:bg-white/10 rounded"><X className="w-5 h-5" /></button>
+                  </div>
+
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-discord-muted" />
+                    <input type="text" value={templateQuery}
+                      onChange={e => handleTemplateSearch(e.target.value)}
+                      placeholder="Search templates..."
+                      className="w-full pl-9 pr-3 py-2 bg-discord-dark border border-white/10 rounded-lg text-sm text-white outline-none focus:border-discord-yellow text-xs" />
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    {templateResults.length === 0 && templateQuery && (
+                      <div className="text-xs text-discord-muted/40 text-center py-8">No templates match "{templateQuery}"</div>
+                    )}
+                    {templateResults.length > 0 && (
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-discord-muted border-b border-white/5">
+                            <th className="text-left font-bold uppercase tracking-wider p-2">Name</th>
+                            <th className="text-left font-bold uppercase tracking-wider p-2">Type</th>
+                            <th className="text-left font-bold uppercase tracking-wider p-2">Description</th>
+                            <th className="text-right font-bold uppercase tracking-wider p-2">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {templateResults.map((tmpl: any) => (
+                            <tr key={tmpl.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                              <td className="p-2 font-medium text-discord-light">{tmpl.name}</td>
+                              <td className="p-2">
+                                <span className="text-[9px] font-mono text-discord-cyan bg-discord-cyan/10 px-1.5 py-0.5 rounded">{tmpl.agentType}</span>
+                              </td>
+                              <td className="p-2 text-discord-muted max-w-xs truncate">{tmpl.description}</td>
+                              <td className="p-2 text-right">
+                                <button type="button" onClick={() => handleUseTemplate(tmpl)}
+                                  className="px-2 py-1 text-[9px] font-bold bg-discord-green/20 text-discord-green rounded hover:bg-discord-green/40 transition-colors"
+                                >Use</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 11. LAUNCH CONFIRMATION MODAL */}
             {showLaunchConfirm && (
               <div className="absolute inset-0 z-50 bg-discord-black/80 backdrop-blur-sm flex items-center justify-center">
                 <div className="bg-discord-darker rounded-xl border border-white/10 shadow-2xl w-full max-w-sm p-6 space-y-4">
@@ -1035,7 +1243,7 @@ const App = () => {
               </div>
             )}
 
-            {/* 9. SUBAGENT MANAGEMENT MODAL */}
+            {/* 12. SUBAGENT MANAGEMENT MODAL */}
             {showSubagentManage && (
               <div className="absolute inset-0 z-50 bg-discord-black/80 backdrop-blur-sm flex items-center justify-center">
                 <div className="bg-discord-darker rounded-xl border border-white/10 shadow-2xl w-full max-w-2xl p-6 space-y-4 max-h-[80vh] flex flex-col">
@@ -1108,7 +1316,7 @@ const App = () => {
               </div>
             )}
 
-            {/* 10. SUBAGENT EDITOR MODAL */}
+            {/* 13. SUBAGENT EDITOR MODAL */}
             {editingSubagent && (
               <div className="absolute inset-0 z-50 bg-discord-black/80 backdrop-blur-sm flex items-center justify-center">
                 <form onSubmit={async (e) => {
@@ -1210,7 +1418,7 @@ const App = () => {
               </div>
             )}
 
-            {/* 11. INIT PROGRESS PANEL */}
+            {/* 14. INIT PROGRESS PANEL */}
             {initSteps.length > 0 && (
               <div className="absolute bottom-0 right-96 z-50 m-4 w-96 bg-discord-darker border border-white/10 rounded-xl shadow-2xl overflow-hidden">
                 <div className="p-3 text-[11px] font-bold text-discord-muted uppercase tracking-wider border-b border-white/5 flex items-center">
@@ -1245,7 +1453,7 @@ const App = () => {
               </div>
             )}
 
-            {/* 12. NEW PROJECT MODAL */}
+            {/* 15. NEW PROJECT MODAL */}
             {showNewProjectModal && (
               <div className="absolute inset-0 z-50 bg-discord-black/80 backdrop-blur-sm flex items-center justify-center">
                 <form onSubmit={async (e) => {
@@ -1329,7 +1537,7 @@ const App = () => {
               </div>
             )}
 
-            {/* 13. FILE BROWSER MODAL */}
+            {/* 16. FILE BROWSER MODAL */}
             {showFileBrowser && (
               <div className="absolute inset-0 z-[60] bg-discord-black/80 backdrop-blur-sm flex items-center justify-center">
                 <div className="bg-discord-darker rounded-xl border border-white/10 shadow-2xl w-full max-w-2xl p-4 space-y-3 max-h-[70vh] flex flex-col">
@@ -1407,7 +1615,7 @@ const App = () => {
               </div>
             )}
 
-            {/* 14. GOAL MODAL */}
+            {/* 17. GOAL MODAL */}
             {showGoalModal && (
               <div className="absolute inset-0 z-50 bg-discord-black/80 backdrop-blur-sm flex items-center justify-center">
                 <form onSubmit={handleCreateGoal} className="bg-discord-darker rounded-xl border border-white/10 shadow-2xl w-full max-w-lg p-6 space-y-4">
