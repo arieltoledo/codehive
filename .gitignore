@@ -13,6 +13,8 @@ web/dist
 # Databases
 prisma/*.db
 prisma/*.db-journal
+prisma/*.db-shm
+prisma/*.db-wal
 
 # Logs
 npm-debug.log*

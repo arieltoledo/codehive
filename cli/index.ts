@@ -1,6 +1,6 @@
 #!/usr/bin/env -S npx tsx
 import fs from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -899,6 +899,11 @@ async function startServer() {
   const serverPath = path.join(rootDir, 'server/index.ts');
 
   console.log('  \x1b[36m[~] Ensuring database schema...\x1b[0m');
+  if (!process.env.DATABASE_URL) {
+    const dbDir = path.join(os.homedir(), '.codehive');
+    mkdirSync(dbDir, { recursive: true });
+    process.env.DATABASE_URL = `file:${path.join(dbDir, 'codehive.db')}`;
+  }
   const result = spawnSync('npx', ['prisma', 'db', 'push', '--schema', schemaPath, '--skip-generate'], {
     stdio: 'inherit',
     env: { ...process.env },
