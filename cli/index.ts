@@ -932,18 +932,49 @@ async function startServer() {
     process.exit(1);
   }
 
-  console.log('  \x1b[36m[~] Starting CodeHive server on http://localhost:3000\x1b[0m');
+  const daemon = process.argv.includes('--daemon') || process.argv.includes('-d');
+
+  console.log(`  \x1b[36m[~] Starting CodeHive server on http://localhost:3000${daemon ? ' (daemon)' : ''}\x1b[0m`);
 
   const require = createRequire(import.meta.url);
   const tsxLoader = pathToFileURL(require.resolve('tsx/esm')).href;
   const child = spawn('node', ['--import', tsxLoader, serverPath], {
-    stdio: 'inherit',
+    stdio: daemon ? 'ignore' : 'inherit',
+    detached: daemon,
     env: { ...process.env },
   });
 
-  child.on('close', (code) => process.exit(code ?? 0));
-  process.on('SIGINT', () => child.kill('SIGINT'));
-  process.on('SIGTERM', () => child.kill('SIGTERM'));
+  if (daemon) {
+    child.unref();
+    const pidPath = path.join(os.homedir(), '.codehive', 'server.pid');
+    await fs.writeFile(pidPath, String(child.pid), 'utf-8');
+    console.log(`  \x1b[32m[✓] Server running as PID ${child.pid}\x1b[0m`);
+    console.log(`  \x1b[90m    Stop with: hive stop\x1b[0m`);
+  } else {
+    child.on('close', (code) => process.exit(code ?? 0));
+    process.on('SIGINT', () => child.kill('SIGINT'));
+    process.on('SIGTERM', () => child.kill('SIGTERM'));
+  }
+}
+
+async function stopServer() {
+  const pidPath = path.join(os.homedir(), '.codehive', 'server.pid');
+  try {
+    const pid = parseInt(await fs.readFile(pidPath, 'utf-8'));
+    try {
+      process.kill(pid, 'SIGTERM');
+      // Give it a moment, then force kill
+      setTimeout(() => { try { process.kill(pid, 'SIGKILL'); } catch {} }, 2000);
+    } catch (e) {
+      console.error(`  \x1b[31m[!] Failed to stop PID ${pid}: ${(e as Error).message}\x1b[0m`);
+      process.exit(1);
+    }
+    await fs.rm(pidPath);
+    console.log(`  \x1b[32m[✓] Server stopped (PID ${pid})\x1b[0m`);
+  } catch {
+    console.error('  \x1b[31m[!] No running server found (no PID file)\x1b[0m');
+    process.exit(1);
+  }
 }
 
 const helpMsg = '\x1b[33m%s\x1b[0m';
@@ -957,6 +988,8 @@ if (command === 'init') {
   runCommand(message).catch(console.error);
 } else if (command === 'start') {
   startServer().catch(console.error);
+} else if (command === 'stop') {
+  stopServer().catch(console.error);
 } else if (command === 'schedule') {
   const agentId = process.argv[3];
   const wakeupAt = process.argv[4];
@@ -981,5 +1014,5 @@ if (command === 'init') {
     console.log(`Schedule created. id: ${data.schedule_id}, wakeup: ${data.wakeup_at}`);
   })().catch(console.error);
 } else {
-  console.log(helpMsg, 'Usage: hive init | hive run <message> | hive start | hive schedule <agent_id> <wakeup_at> <command>');
+  console.log(helpMsg, 'Usage: hive init | hive run <message> | hive start [-d] | hive stop | hive schedule <agent_id> <wakeup_at> <command>');
 }
