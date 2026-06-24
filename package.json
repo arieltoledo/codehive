@@ -1,6 +1,6 @@
 {
   "name": "@arieltoledo/codehive",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Multi-Agent Orchestration Platform — coordinate, observe, and audit swarms of AI coding agents via a shared MCP server",
   "type": "module",
   "bin": {
@@ -11,8 +11,12 @@
     "mcp/",
     "server/",
     "prisma/schema.prisma",
+    "prisma/seed.ts",
     "README.md"
   ],
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "prisma db push && tsx server/index.ts",
