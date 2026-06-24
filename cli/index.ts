@@ -1,6 +1,6 @@
 #!/usr/bin/env -S npx tsx
 import fs from 'node:fs/promises';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -930,6 +930,33 @@ async function startServer() {
     const stderr = result.stderr?.toString().trim() || '(no output)';
     console.error(`  \x1b[31m[!] Database init failed (Prisma ${prismaMajor}.x): ${stderr}\x1b[0m`);
     process.exit(1);
+  }
+
+  // Build frontend if needed
+  const webDir = path.join(rootDir, 'web');
+  const webDist = path.join(webDir, 'dist');
+  if (!existsSync(webDist)) {
+    console.log('  \x1b[36m[~] Building frontend...\x1b[0m');
+    const webNodeModules = path.join(webDir, 'node_modules');
+    if (!existsSync(webNodeModules)) {
+      console.log('  \x1b[90m    Installing web dependencies...\x1b[0m');
+      const installResult = spawnSync('npm', ['install'], {
+        stdio: 'inherit',
+        cwd: webDir,
+        env: { ...process.env },
+      });
+      if (installResult.status !== 0) {
+        console.warn('  \x1b[33m[!] Web deps install failed, serving API only\x1b[0m');
+      }
+    }
+    const viteResult = spawnSync('npx', ['vite', 'build'], {
+      stdio: 'inherit',
+      cwd: webDir,
+      env: { ...process.env },
+    });
+    if (viteResult.status !== 0) {
+      console.warn('  \x1b[33m[!] Frontend build failed, serving API only\x1b[0m');
+    }
   }
 
   const daemon = process.argv.includes('--daemon') || process.argv.includes('-d');

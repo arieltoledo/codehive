@@ -10,6 +10,7 @@ import { createDomainServices, type DomainServices } from "./domain/services.js"
 import { registerRoutes } from "./http/routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(__dirname, "..");
 
 export interface BuildAppOptions {
   logger?: boolean | FastifyBaseLogger;
@@ -80,7 +81,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(multipart);
 
   await app.register(fastifyStatic, {
-    root: path.join(process.cwd(), "web/dist"),
+    root: path.join(PROJECT_ROOT, "web", "dist"),
     prefix: "/"
   });
 
