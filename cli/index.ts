@@ -897,6 +897,7 @@ ${lines}
 async function startServer() {
   const schemaPath = path.join(rootDir, 'prisma', 'schema.prisma');
   const serverPath = path.join(rootDir, 'server/index.ts');
+  const prismaBin = path.join(rootDir, 'node_modules', '.bin', 'prisma');
 
   console.log('  \x1b[36m[~] Ensuring database schema...\x1b[0m');
   if (!process.env.DATABASE_URL) {
@@ -904,12 +905,30 @@ async function startServer() {
     mkdirSync(dbDir, { recursive: true });
     process.env.DATABASE_URL = `file:${path.join(dbDir, 'codehive.db')}`;
   }
-  const result = spawnSync('npx', ['prisma', 'db', 'push', '--schema', schemaPath, '--skip-generate'], {
+
+  // Detect Prisma version for flag compatibility
+  let prismaMajor = 6;
+  try {
+    const verResult = spawnSync(prismaBin, ['--version'], { encoding: 'utf-8' });
+    const match = verResult.stdout?.match(/(\d+)\./);
+    if (match) prismaMajor = parseInt(match[1]);
+  } catch {}
+
+  const args = ['db', 'push', `--schema=${schemaPath}`];
+  if (prismaMajor >= 7) {
+    args.push(`--url=${process.env.DATABASE_URL}`);
+  } else {
+    args.push('--skip-generate');
+  }
+
+  const result = spawnSync(prismaBin, args, {
     stdio: 'inherit',
+    cwd: rootDir,
     env: { ...process.env },
   });
   if (result.status !== 0) {
-    console.error('  \x1b[31m[!] Failed to initialize database\x1b[0m');
+    const stderr = result.stderr?.toString().trim() || '(no output)';
+    console.error(`  \x1b[31m[!] Database init failed (Prisma ${prismaMajor}.x): ${stderr}\x1b[0m`);
     process.exit(1);
   }
 
