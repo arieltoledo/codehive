@@ -13,6 +13,8 @@ import {
   toSubagentInstanceDto
 } from "./presenters.js";
 
+const roomChannels = new Map<string, Set<any>>();
+
 export function handleWebsocket(
   connection: any,
   req: FastifyRequest,
@@ -22,13 +24,28 @@ export function handleWebsocket(
   const socket = connection.socket || connection;
 
   if (!socket || typeof socket.on !== 'function') {
-    req.log.error({ 
-      hasConnection: !!connection, 
+    req.log.error({
+      hasConnection: !!connection,
       hasSocket: !!connection?.socket,
       socketType: typeof socket
     }, "Invalid WebSocket connection object received");
     return;
   }
+
+  const roomId = (req.query as Record<string, string>)?.roomId;
+  if (!roomId) {
+    req.log.warn("WebSocket connection without roomId — closing");
+    socket.close();
+    return;
+  }
+
+  if (!roomChannels.has(roomId)) {
+    roomChannels.set(roomId, new Set());
+  }
+  roomChannels.get(roomId)!.add(socket);
+  req.log.info({ roomId }, "WebSocket registered to room channel");
+
+  const projectId = roomId.split('::')[1];
 
   const eventTypes: Array<DomainEvent["type"]> = [
     "agent_registered",
@@ -63,48 +80,58 @@ export function handleWebsocket(
 
   const handlers = eventTypes.map((type) => {
     const handler = (payload: any) => {
-      req.log.info({ type }, "Broadcasting event over WebSocket");
-      if (socket.readyState === 1) { // OPEN
-        let dto = payload;
-        
-        if (type === "agent_registered" || type === "agent_updated") {
-          dto = toAgentDto(payload);
-        } else if (type === "message_sent") {
-          dto = toMessageDto(payload);
-        } else if (type === "task_started" || type === "task_finished") {
-          dto = toTaskDto(payload);
-        } else if (type === "file_claimed" || type === "file_released") {
-          dto = toFileClaimDto(payload);
-        } else if (type === "decision_recorded") {
-          dto = toDecisionDto(payload);
-        } else if (type.startsWith("goal_")) {
-          dto = toGoalDto(payload);
-        } else if (type.startsWith("subagent_")) {
-          if (type === "subagent_deleted") {
-            dto = payload;
-          } else if (type === "subagent_instance_created" || type === "subagent_instance_completed" || type === "subagent_instance_error") {
-            dto = toSubagentInstanceDto(payload);
-          } else {
-            dto = toSubagentDto(payload);
-          }
-        }
+      const eventRoomId = payload?.roomId;
+      const eventProjectId = payload?.projectId;
 
-        socket.send(JSON.stringify({ type, payload: dto }));
-      } else {
-        req.log.warn({ type, state: socket.readyState }, "WebSocket not open, cannot broadcast");
+      if (eventRoomId && eventRoomId !== roomId) return;
+      if (!eventRoomId && eventProjectId && eventProjectId !== projectId) return;
+
+      if (socket.readyState !== 1) return;
+
+      let dto = payload;
+
+      if (type === "agent_registered" || type === "agent_updated") {
+        dto = toAgentDto(payload);
+      } else if (type === "message_sent") {
+        dto = toMessageDto(payload);
+      } else if (type === "task_started" || type === "task_finished") {
+        dto = toTaskDto(payload);
+      } else if (type === "file_claimed" || type === "file_released") {
+        dto = toFileClaimDto(payload);
+      } else if (type === "decision_recorded") {
+        dto = toDecisionDto(payload);
+      } else if (type.startsWith("goal_")) {
+        dto = toGoalDto(payload);
+      } else if (type.startsWith("subagent_")) {
+        if (type === "subagent_deleted") {
+          dto = payload;
+        } else if (type === "subagent_instance_created" || type === "subagent_instance_completed" || type === "subagent_instance_error") {
+          dto = toSubagentInstanceDto(payload);
+        } else {
+          dto = toSubagentDto(payload);
+        }
       }
+
+      socket.send(JSON.stringify({ type, payload: dto }));
     };
     events.on(type, handler);
     return { type, handler };
   });
 
   socket.on("close", () => {
+    const channel = roomChannels.get(roomId);
+    if (channel) {
+      channel.delete(socket);
+      if (channel.size === 0) {
+        roomChannels.delete(roomId);
+      }
+    }
     handlers.forEach(({ type, handler }) => {
       events.off(type, handler);
     });
+    req.log.info({ roomId }, "WebSocket unregistered from room channel");
   });
 
-  // Mark as alive for heartbeat detection
   socket.isAlive = true;
   socket.on("pong", () => { socket.isAlive = true; });
 

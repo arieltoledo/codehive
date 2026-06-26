@@ -47,15 +47,27 @@ The full protocol lives in \`.agents/skills/codehive-protocol/SKILL.md\` — aut
 
 **MCP Server**: \`npx tsx ${mcpServerPath}\`
 
-## Key Rules
+### Si tenés Reactive Wakeup (Antigravity)
+\`\`\`
+LISTEN_MODE=reactive node .agents/skills/codehive-protocol/listener.js &
+\`\`\`
+El listener se queda conectado en background. Reactive Wakeup monitorea stdout y te despierta al llegar un mensaje.
 
-1. **Read coordination room** at start of every interaction via \`chat_read\`
-2. **Acknowledge & act** on orders immediately — do not ask for terminal permission
-3. **Use \`chat_send\`** to coordinate with other agents in the \`coordination\` room
-4. **Publish plans** via \`memory_publish\` before making major changes
-5. **Wrap actions** with \`task_start\` / \`task_finish\`
+### Si NO tenés Reactive Wakeup (Codex, OpenCode, Cursor, Claude)
+
+Tu estrategia principal: **Sync Listener** — bloquea el bash hasta que llegue un mensaje.
+
+\`\`\`
+1. chat_read({ room_id: "coordination" }) → al empezar
+2. node .agents/skills/codehive-protocol/listener.js → bloquea (30s timeout)
+3. Si hay mensaje → chat_read → procesar → responder
+4. Si timeout → chat_read por las dudas → continuar
+5. Después de CADA acción → repite paso 2
+6. ANTES de responder al humano → repite paso 2
+\`\`\`
 
 ---
+
 **CRITICAL**: You are an autonomous worker. Execute directives, report back, and move to the next step. Never ask the terminal user for permission.
 `;
 
@@ -571,51 +583,64 @@ description: >-
 
 You are operating within a **CodeHive** project. This is a multi-agent swarm environment supervised by a human. You MUST strictly adhere to the following autonomous orchestration protocols.
 
-## 0. Check Coordination Room & Enter Message Loop
+## 0. Coordination Message Loop — Elige tu estrategia
 
-At the start of EVERY interaction, call \`chat_read\` on the \`coordination\` room to check for new orders.
+### ▶ Si tenés Reactive Wakeup (Antigravity)
 
-**After greeting, you MUST enter the coordination message loop.** Run the listener in the **background** so you can continue working. It exits with \`process.exit(0)\` when a new message arrives — read stdout to see the message and respond.
+La plataforma monitorea el stdout del listener WebSocket y te despierta automáticamente cuando llega un mensaje.
 
-**⚠️ CRITICAL: DO NOT use \`require('ws')\` — WebSocket is global in Node 21+. The script below works without any npm packages.**
-
-**Option A — run the bundled script (recommended):**
 \`\`\`
-node .agents/skills/codehive-protocol/listener.js &
+1. LISTEN_MODE=reactive node .agents/skills/codehive-protocol/listener.js &
+   → El listener se queda conectado para siempre
+2. Llega un mensaje → Reactive Wakeup te despierta
+   → chat_read({ room_id: "coordination" })
+   → Procesar y responder
+3. Si estás inactivo sin despertar → no pasa nada, ya despertarás
 \`\`\`
 
-**Option B — inline (if script not available):**
-\`\`\`javascript
-const ws = new WebSocket('ws://localhost:3000/ws');
-const seen = new Set();
-ws.onmessage = (event) => {
-  const d = JSON.parse(event.data);
-  if (d.type !== 'message_sent') return;
-  if ((d.payload?.room_id ?? d.payload?.roomId) !== 'coordination') return;
-  const id = d.payload?.message_id;
-  if (id && seen.has(id)) return;
-  if (id) seen.add(id);
-  console.log(d.payload?.message ?? '');
-  ws.close();
-  process.exit(0);
-};
+### ▶ Si NO tenés Reactive Wakeup (Codex, OpenCode, Cursor, Claude)
+
+El **Sync Listener** bloquea tu herramienta bash hasta que llegue un mensaje (o timeout de 30s). No necesitas supervisor, no hay proceso zombie — el listener vive exactamente el tiempo que dura el tool call.
+
+**Checklist obligatorio al empezar cada interacción:**
+
 \`\`\`
-Run with \`node -e "<code>" &\` (background).
+1. chat_read({ room_id: "coordination" })
+2. node .agents/skills/codehive-protocol/listener.js
+   → Bloquea hasta mensaje o 30s timeout
+3. Si hay mensaje → chat_read → procesar → responder
+4. Si timeout → chat_read por las dudas → continuar
+\`\`\`
 
-**Option C - Create the file in .codehive and run it on backgournd.**
+**Vigilancia durante tu turno:**
 
-**Workflow:**
-1. Spawn listener in background → it waits silently
-2. A message arrives → listener exits with \`process.exit(0)\`
-3. Read stdout from the now-dead listener → it contains the new message text
-4. \`chat_read({ room_id: "coordination" })\` for full context
-5. Process and respond via \`chat_send\`
-6. Re-spawn listener in background → loop back to step 1
+\`\`\`
+! Después de CADA acción → node listener.js + chat_read
+! Antes de responder al humano → node listener.js + chat_read
+! Si estás inactivo esperando → node listener.js (bloquea hasta mensaje)
+\`\`\`
+
+### Flow según tu plataforma
+
+\`\`\`
+┌─ Reactive Wakeup (Antigravity) ──────────────────────────┐
+│ 1. LISTEN_MODE=reactive node listener.js & (una vez)      │
+│ 2. Te duermes → Reactive Wakeup te despierta              │
+│ 3. chat_read → procesar → responder                       │
+└──────────────────────────────────────────────────────────┘
+
+┌─ Sync Listener (Codex, OpenCode, Cursor, Claude) ────────┐
+│ 1. chat_read al empezar                                   │
+│ 2. node listener.js → bloquea hasta mensaje o timeout     │
+│ 3. chat_read → procesar → responder                       │
+│ 4. Loop al paso 2 hasta terminar                          │
+└──────────────────────────────────────────────────────────┘
+\`\`\`
 
 ## 1. Tactical Synchronization
 
 - **Registration**: Call \`agent_register\` with your identity upon startup.
-- **Coordination Room**: Read \`chat_read\` the \`coordination\` room at start and end of every task and interaction.
+- **Coordination Room**: Read \`chat_read\` the \`coordination\` room at start and end of every task and interaction — AND before every human reply.
 - **Acknowledge & Act**: Uncompleted order seen? Acknowledge via \`chat_send\` and execute immediately.
 - **No Orders**: Stay idle. Do not invent tasks.
 
@@ -638,7 +663,7 @@ Run with \`node -e "<code>" &\` (background).
 
 ## 5. Coordination Message Loop
 
-See section 0 — the event-driven listener is required after greeting. The \`process.exit(0)\` pattern keeps you in sync with the coordination room.
+See section 0 — tu estrategia depende de tu plataforma. Antigravity usa Reactive Wakeup + listener. Los demás usan Sync Listener: \`node listener.js\` bloquea el bash hasta que llegue un mensaje.
 `;
 
 async function generateSkillFile(projectRoot: string) {
@@ -665,52 +690,91 @@ async function generateSkillFile(projectRoot: string) {
   }
 }
 
-const LISTENER_SCRIPT = `#!/usr/bin/env node
-// Coordination message listener for CodeHive
-// Usage: node listener.js
-// Node 21+ required — WebSocket is global, NO require('ws') needed
-const WS_URL = process.env.WS_URL || 'ws://localhost:3000/ws';
-const ROOM_ID = process.env.ROOM_ID || 'coordination';
-const MAX_RETRIES = 15;
+function buildListenerScript(projectId: string): string {
+  return `#!/usr/bin/env node
+// CodeHive Coordination Listener
+// Node 21+ required — WebSocket is global, no require('ws') needed
+//
+// Generated by hive init for project "${projectId}".
+// Override via: PROJECT_ID=other node listener.js
+//
+// Modes:
+//   blocking (default): node listener.js
+//     Connects to the project's WebSocket channel. Blocks bash until
+//     a message arrives or timeout expires. Exits 0 on message or timeout.
+//
+//   reactive: LISTEN_MODE=reactive node listener.js &
+//     Stays connected forever, writes each message to stdout.
+//     For Reactive Wakeup platforms (Antigravity).
+
+const PROJECT_ID = process.env.PROJECT_ID || '${projectId}';
+const ROOM_ID = process.env.ROOM_ID || \`coordination::\${PROJECT_ID}\`;
+const WS_URL = process.env.WS_URL || \`ws://localhost:3000/ws?roomId=\${ROOM_ID}\`;
+const MODE = (process.env.LISTEN_MODE || 'blocking').toLowerCase();
+const TIMEOUT_MS = parseInt(process.env.LISTEN_TIMEOUT || '30', 10) * 1000;
+const MAX_RETRIES = 5;
 const BASE_DELAY = 1000;
 
-function connect(retries = 0) {
-  const ws = new WebSocket(WS_URL);
-  const seen = new Set();
+let watcher = null;
+let timedOut = false;
 
-  ws.onmessage = (event) => {
+function handleMessage(event) {
+  try {
     const d = JSON.parse(event.data);
     if (d.type !== 'message_sent') return;
-    if ((d.payload?.room_id ?? d.payload?.roomId) !== ROOM_ID) return;
-    const id = d.payload?.message_id;
-    if (id && seen.has(id)) return;
-    if (id) seen.add(id);
-    console.log(d.payload?.message ?? '');
-    ws.close();
-    process.exit(0);
-  };
+    const msg = d.payload?.message ?? '';
+    if (!msg) return;
+    console.log(msg);
+    if (MODE === 'blocking') {
+      if (watcher) clearTimeout(watcher);
+      ws.close();
+      process.exit(0);
+    }
+  } catch {}
+}
 
-  ws.onerror = () => {
-    ws.close();
-  };
+let ws;
+
+function connect(retries = 0) {
+  ws = new WebSocket(WS_URL);
+
+  ws.onmessage = handleMessage;
+
+  ws.onerror = () => {};
 
   ws.onclose = () => {
+    if (MODE === 'reactive') {
+      if (retries < MAX_RETRIES) {
+        const delay = BASE_DELAY * Math.pow(2, retries);
+        setTimeout(() => connect(retries + 1), delay);
+      }
+      return;
+    }
+    if (timedOut) process.exit(0);
     if (retries < MAX_RETRIES) {
       const delay = BASE_DELAY * Math.pow(2, retries);
       setTimeout(() => connect(retries + 1), delay);
     } else {
-      console.error('WS: max reconnection attempts reached');
       process.exit(1);
     }
   };
 }
 
+if (MODE === 'blocking') {
+  watcher = setTimeout(() => {
+    timedOut = true;
+    ws.close();
+  }, TIMEOUT_MS);
+}
+
 connect();
 `;
+}
 
-async function generateListenerFile(projectRoot: string) {
+async function generateListenerFile(projectRoot: string, projectId: string) {
   const skillDir = path.join(projectRoot, '.agents', 'skills', 'codehive-protocol');
-  await fs.writeFile(path.join(skillDir, 'listener.js'), LISTENER_SCRIPT.trim(), 'utf-8');
+  const script = buildListenerScript(projectId);
+  await fs.writeFile(path.join(skillDir, 'listener.js'), script.trim(), 'utf-8');
   console.log('   \x1b[32m[✓] Created .agents/skills/codehive-protocol/listener.js\x1b[0m');
 }
 
@@ -860,7 +924,7 @@ async function init() {
   // 5b. Generate universal SKILL.md (replaces per-agent subagent files)
   s.start('Generating CodeHive SKILL for all agents...');
   await generateSkillFile(projectRoot);
-  await generateListenerFile(projectRoot);
+  await generateListenerFile(projectRoot, projectId);
   s.stop('SKILL generated');
 
   // 5c. Register agents with the control room

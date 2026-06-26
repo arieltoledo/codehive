@@ -27,6 +27,10 @@ export class ChatService {
     private readonly events?: EventBus
   ) {}
 
+  private qualifyRoomId(roomId: string, projectId: string): string {
+    return `${roomId}::${projectId}`;
+  }
+
   async sendMessage(input: SendMessageInput): Promise<MessageRecord> {
     if (input.senderId !== 'human_supervisor' && !(await this.agents.exists(input.senderId))) {
       throw new DomainError(
@@ -36,12 +40,13 @@ export class ChatService {
       );
     }
 
-    const projectId = input.projectId ?? "local";
+    const projectId = input.projectId ?? DEFAULT_PROJECT_ID;
+    const qualifiedRoomId = this.qualifyRoomId(input.roomId, projectId);
     await this.ensureRoom(input.roomId, projectId);
 
     const message = await this.prisma.message.create({
       data: {
-        roomId: input.roomId,
+        roomId: qualifiedRoomId,
         senderId: input.senderId,
         senderType: input.senderId === 'human_supervisor' ? 'human' : 'agent',
         messageType: input.messageType,
@@ -62,22 +67,26 @@ export class ChatService {
   }
 
   async readMessages(input: ReadMessagesInput): Promise<MessageRecord[]> {
-    const projectId = input.projectId ?? "local";
+    const projectId = input.projectId ?? DEFAULT_PROJECT_ID;
     
     if (input.roomId) {
+      const qualifiedRoomId = this.qualifyRoomId(input.roomId, projectId);
       await this.ensureRoom(input.roomId, projectId);
+
+      const messages = await this.prisma.message.findMany({
+        where: { roomId: qualifiedRoomId },
+        include: { room: true },
+        orderBy: { createdAt: "desc" },
+        take: input.limit
+      });
+      return messages.map(toMessageRecord);
     }
 
     const messages = await this.prisma.message.findMany({
       where: {
-        room: {
-          projectId,
-          ...(input.roomId ? { id: input.roomId } : {})
-        }
+        room: { projectId }
       },
-      include: {
-        room: true
-      },
+      include: { room: true },
       orderBy: { createdAt: "desc" },
       take: input.limit
     });
@@ -93,16 +102,16 @@ export class ChatService {
       create: { id: projectId, name: projectId }
     });
 
+    const qualifiedId = this.qualifyRoomId(roomId, projectId);
+
     await this.prisma.room.upsert({
-      where: { id: roomId },
+      where: { id: qualifiedId },
       create: {
-        id: roomId,
+        id: qualifiedId,
         projectId,
         name: roomId
       },
-      update: {
-        projectId // Ensure it's in the right project
-      }
+      update: {}
     });
   }
 }
