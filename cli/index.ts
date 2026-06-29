@@ -47,24 +47,41 @@ The full protocol lives in \`.agents/skills/codehive-protocol/SKILL.md\` — aut
 
 **MCP Server**: \`npx tsx ${mcpServerPath}\`
 
-### Si tenés Reactive Wakeup (Antigravity)
+**IMPORTANTE**: El Coordination Message Loop no es opcional. Sos un worker autónomo. Tu trabajo es escuchar el room, procesar, responder. Sin excepción.
+
+### Reactive Wakeup (Antigravity)
 \`\`\`
 LISTEN_MODE=reactive node .agents/skills/codehive-protocol/listener.js &
 \`\`\`
-El listener se queda conectado en background. Reactive Wakeup monitorea stdout y te despierta al llegar un mensaje.
+Listener en background. Reactive Wakeup monitorea stdout y te despierta. Después de procesar → \`chat_read\` recovery → loop.
 
-### Si NO tenés Reactive Wakeup (Codex, OpenCode, Cursor, Claude)
-
-Tu estrategia principal: **Sync Listener** — bloquea el bash hasta que llegue un mensaje.
-
+### spawn_subagent — MANDATORIO (OpenCode, Codex, Cursor, Claude)
 \`\`\`
-1. chat_read({ room_id: "coordination" }) → al empezar
-2. node .agents/skills/codehive-protocol/listener.js → bloquea (30s timeout)
-3. Si hay mensaje → chat_read → procesar → responder
-4. Si timeout → chat_read por las dudas → continuar
-5. Después de CADA acción → repite paso 2
-6. ANTES de responder al humano → repite paso 2
+Loop:
+  ── FASE ACTIVA (sin subagente) ──
+  1. chat_read({ room_id: "coordination" }) → leer el room
+  2. Si hay órdenes → procesar y responder
+  3. chat_read({ room_id: "coordination" }) → recovery
+
+  ── FASE DE ESPERA (con subagente) ──
+  4. spawn_subagent("hive-watcher", "node .agents/skills/codehive-protocol/listener.js")
+     → BLOQUEA hasta mensaje
+  5. Mensaje → subagente responde
+  6. task_finish("hive-watcher")
+  7. Loop al paso 1
 \`\`\`
+
+### Alternativa directa (sin subagente)
+\`\`\`
+node .agents/skills/codehive-protocol/listener.js
+\`\`\`
+Bloquea bash sin timeout. Misma obligación: listener → procesar → leer perdidos → loop.
+
+### Canales privados
+\`\`\`
+chat_send({ room_id: "discussion::agent-a::agent-b" })
+\`\`\`
+Cada agente escucha su propio listener en el canal privado.
 
 ---
 
@@ -583,58 +600,66 @@ description: >-
 
 You are operating within a **CodeHive** project. This is a multi-agent swarm environment supervised by a human. You MUST strictly adhere to the following autonomous orchestration protocols.
 
-## 0. Coordination Message Loop — Elige tu estrategia
+## 0. Coordination Message Loop — OBLIGATORIO
 
-### ▶ Si tenés Reactive Wakeup (Antigravity)
+**IMPORTANTE**: Este loop NO es opcional. Debés seguirlo exactamente según tu plataforma. Sos un worker autónomo, tu trabajo es escuchar el room de coordinación, procesar los mensajes, y responder. Sin excepción.
 
-La plataforma monitorea el stdout del listener WebSocket y te despierta automáticamente cuando llega un mensaje.
+### ▶ spawn_subagent — MANDATORIO (OpenCode, Codex, Cursor, Claude)
 
-\`\`\`
-1. LISTEN_MODE=reactive node .agents/skills/codehive-protocol/listener.js &
-   → El listener se queda conectado para siempre
-2. Llega un mensaje → Reactive Wakeup te despierta
-   → chat_read({ room_id: "coordination" })
-   → Procesar y responder
-3. Si estás inactivo sin despertar → no pasa nada, ya despertarás
-\`\`\`
-
-### ▶ Si NO tenés Reactive Wakeup (Codex, OpenCode, Cursor, Claude)
-
-El **Sync Listener** bloquea tu herramienta bash hasta que llegue un mensaje (o timeout de 30s). No necesitas supervisor, no hay proceso zombie — el listener vive exactamente el tiempo que dura el tool call.
-
-**Checklist obligatorio al empezar cada interacción:**
+El subagente **solo vive durante la espera**. Mientras trabajás, no hay subagente corriendo.
 
 \`\`\`
-1. chat_read({ room_id: "coordination" })
-2. node .agents/skills/codehive-protocol/listener.js
-   → Bloquea hasta mensaje o 30s timeout
-3. Si hay mensaje → chat_read → procesar → responder
-4. Si timeout → chat_read por las dudas → continuar
+Loop (OBLIGATORIO):
+
+  ── FASE ACTIVA (sin subagente) ──
+  1. chat_read({ room_id: "coordination" }) → leer el room
+  2. Si hay órdenes o mensajes → procesar y responder via chat_send
+  3. chat_read({ room_id: "coordination" }) → recovery:
+     capturar mensajes que llegaron mientras procesabas
+     Si hay nuevos → procesar y responder
+
+  ── FASE DE ESPERA (con subagente) ──
+  4. spawn_subagent("hive-watcher", "node .agents/skills/codehive-protocol/listener.js")
+     → BLOQUEA hasta que alguien habla en el room
+  5. Mensaje → subagente responde con el contenido
+  6. task_finish("hive-watcher") → mata el subagente
+  7. Loop al paso 1
 \`\`\`
 
-**Vigilancia durante tu turno:**
+### ▶ Alternativa directa (sin spawn_subagent)
+
+Sólo si spawn_subagent no está disponible. Misma lógica: trabajás sin subagente, escuchás con listener.
 
 \`\`\`
-! Después de CADA acción → node listener.js + chat_read
-! Antes de responder al humano → node listener.js + chat_read
-! Si estás inactivo esperando → node listener.js (bloquea hasta mensaje)
+Loop:
+  ── FASE ACTIVA ──
+  1. chat_read → procesar → responder → chat_read recovery
+  
+  ── FASE DE ESPERA ──
+  2. node .agents/skills/codehive-protocol/listener.js → bloquea
+  3. Mensaje → loop al paso 1
 \`\`\`
 
-### Flow según tu plataforma
+### ▶ Reactive Wakeup (Antigravity)
+
+Listener en background forever. No necesitás spawn/kill.
 
 \`\`\`
-┌─ Reactive Wakeup (Antigravity) ──────────────────────────┐
-│ 1. LISTEN_MODE=reactive node listener.js & (una vez)      │
-│ 2. Te duermes → Reactive Wakeup te despierta              │
-│ 3. chat_read → procesar → responder                       │
-└──────────────────────────────────────────────────────────┘
+Loop:
+  ── FASE ACTIVA ──
+  1. chat_read → procesar → responder → chat_read recovery
+  
+  ── FASE DE ESPERA ──
+  2. Dormir (Reactive Wakeup te despierta cuando llega un mensaje)
+  3. Loop al paso 1
+\`\`\`
 
-┌─ Sync Listener (Codex, OpenCode, Cursor, Claude) ────────┐
-│ 1. chat_read al empezar                                   │
-│ 2. node listener.js → bloquea hasta mensaje o timeout     │
-│ 3. chat_read → procesar → responder                       │
-│ 4. Loop al paso 2 hasta terminar                          │
-└──────────────────────────────────────────────────────────┘
+### Vigilancia durante tu turno (adicional al loop)
+
+\`\`\`
+! Al empezar:   chat_read({ room_id: "coordination" })
+! Después de cada acción:  chat_send / chat_read según corresponda
+! Antes de responder al humano: chat_read({ room_id: "coordination" })
 \`\`\`
 
 ## 1. Tactical Synchronization
@@ -647,6 +672,7 @@ El **Sync Listener** bloquea tu herramienta bash hasta que llegue un mensaje (o 
 ## 2. Swarm Coordination
 
 - Use \`chat_send\` in \`coordination\` to divide labor.
+- **Private channels**: For 1:1 discussions, use \`chat_send({ room_id: "discussion::agent-a::agent-b" })\`. Each agent creates its own listener for private rooms.
 - Never duplicate claimed work.
 - End your turn so others can respond.
 
@@ -660,10 +686,11 @@ El **Sync Listener** bloquea tu herramienta bash hasta que llegue un mensaje (o 
 
 - **Server**: \`npx tsx ${mcpServerPath}\`
 - **Identity**: projectId is assigned dynamically. Trust server context.
+- **Channels**: Each project has its own isolated WebSocket channel (\`coordination::projectId\`). The listener connects automatically to the correct channel.
 
 ## 5. Coordination Message Loop
 
-See section 0 — tu estrategia depende de tu plataforma. Antigravity usa Reactive Wakeup + listener. Los demás usan Sync Listener: \`node listener.js\` bloquea el bash hasta que llegue un mensaje.
+See section 0. No es opcional. Seguí tu loop según tu plataforma.
 `;
 
 async function generateSkillFile(projectRoot: string) {
@@ -696,27 +723,25 @@ function buildListenerScript(projectId: string): string {
 // Node 21+ required — WebSocket is global, no require('ws') needed
 //
 // Generated by hive init for project "${projectId}".
-// Override via: PROJECT_ID=other node listener.js
+// Override via PROJECT_ID env.
 //
 // Modes:
 //   blocking (default): node listener.js
-//     Connects to the project's WebSocket channel. Blocks bash until
-//     a message arrives or timeout expires. Exits 0 on message or timeout.
+//     Connects to the project's WebSocket channel. Blocks until a message
+//     arrives. Prints the message to stdout, exits 0. Use via spawn_subagent.
 //
 //   reactive: LISTEN_MODE=reactive node listener.js &
-//     Stays connected forever, writes each message to stdout.
+//     Stays connected forever, prints each message to stdout.
 //     For Reactive Wakeup platforms (Antigravity).
 
 const PROJECT_ID = process.env.PROJECT_ID || '${projectId}';
 const ROOM_ID = process.env.ROOM_ID || \`coordination::\${PROJECT_ID}\`;
 const WS_URL = process.env.WS_URL || \`ws://localhost:3000/ws?roomId=\${ROOM_ID}\`;
 const MODE = (process.env.LISTEN_MODE || 'blocking').toLowerCase();
-const TIMEOUT_MS = parseInt(process.env.LISTEN_TIMEOUT || '30', 10) * 1000;
-const MAX_RETRIES = 5;
+const MAX_RETRIES = 15;
 const BASE_DELAY = 1000;
 
-let watcher = null;
-let timedOut = false;
+let retries = 0;
 
 function handleMessage(event) {
   try {
@@ -726,7 +751,6 @@ function handleMessage(event) {
     if (!msg) return;
     console.log(msg);
     if (MODE === 'blocking') {
-      if (watcher) clearTimeout(watcher);
       ws.close();
       process.exit(0);
     }
@@ -735,36 +759,22 @@ function handleMessage(event) {
 
 let ws;
 
-function connect(retries = 0) {
+function connect() {
   ws = new WebSocket(WS_URL);
-
   ws.onmessage = handleMessage;
-
   ws.onerror = () => {};
 
   ws.onclose = () => {
     if (MODE === 'reactive') {
       if (retries < MAX_RETRIES) {
         const delay = BASE_DELAY * Math.pow(2, retries);
-        setTimeout(() => connect(retries + 1), delay);
+        retries++;
+        setTimeout(connect, delay);
       }
       return;
     }
-    if (timedOut) process.exit(0);
-    if (retries < MAX_RETRIES) {
-      const delay = BASE_DELAY * Math.pow(2, retries);
-      setTimeout(() => connect(retries + 1), delay);
-    } else {
-      process.exit(1);
-    }
+    process.exit(1);
   };
-}
-
-if (MODE === 'blocking') {
-  watcher = setTimeout(() => {
-    timedOut = true;
-    ws.close();
-  }, TIMEOUT_MS);
 }
 
 connect();

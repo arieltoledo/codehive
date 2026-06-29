@@ -33,19 +33,17 @@ export function handleWebsocket(
   }
 
   const roomId = (req.query as Record<string, string>)?.roomId;
-  if (!roomId) {
-    req.log.warn("WebSocket connection without roomId — closing");
-    socket.close();
-    return;
-  }
+  const projectId = roomId ? roomId.split('::')[1] : null;
 
-  if (!roomChannels.has(roomId)) {
-    roomChannels.set(roomId, new Set());
+  if (roomId) {
+    if (!roomChannels.has(roomId)) {
+      roomChannels.set(roomId, new Set());
+    }
+    roomChannels.get(roomId)!.add(socket);
+    req.log.info({ roomId }, "WebSocket registered to room channel");
+  } else {
+    req.log.info("WebSocket connected (dashboard mode — all events)");
   }
-  roomChannels.get(roomId)!.add(socket);
-  req.log.info({ roomId }, "WebSocket registered to room channel");
-
-  const projectId = roomId.split('::')[1];
 
   const eventTypes: Array<DomainEvent["type"]> = [
     "agent_registered",
@@ -80,11 +78,12 @@ export function handleWebsocket(
 
   const handlers = eventTypes.map((type) => {
     const handler = (payload: any) => {
-      const eventRoomId = payload?.roomId;
-      const eventProjectId = payload?.projectId;
-
-      if (eventRoomId && eventRoomId !== roomId) return;
-      if (!eventRoomId && eventProjectId && eventProjectId !== projectId) return;
+      if (roomId) {
+        const eventRoomId = payload?.roomId;
+        const eventProjectId = payload?.projectId;
+        if (eventRoomId && eventRoomId !== roomId) return;
+        if (!eventRoomId && eventProjectId && eventProjectId !== projectId) return;
+      }
 
       if (socket.readyState !== 1) return;
 
@@ -119,17 +118,19 @@ export function handleWebsocket(
   });
 
   socket.on("close", () => {
-    const channel = roomChannels.get(roomId);
-    if (channel) {
-      channel.delete(socket);
-      if (channel.size === 0) {
-        roomChannels.delete(roomId);
+    if (roomId) {
+      const channel = roomChannels.get(roomId);
+      if (channel) {
+        channel.delete(socket);
+        if (channel.size === 0) {
+          roomChannels.delete(roomId);
+        }
       }
     }
     handlers.forEach(({ type, handler }) => {
       events.off(type, handler);
     });
-    req.log.info({ roomId }, "WebSocket unregistered from room channel");
+    req.log.info({ roomId: roomId ?? "dashboard" }, "WebSocket disconnected");
   });
 
   socket.isAlive = true;
